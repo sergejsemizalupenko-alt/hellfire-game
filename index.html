@@ -19,14 +19,15 @@
 #weapon{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;padding:8px 12px;font-weight:800;text-align:center;font-size:13px}
 #weapon small{display:block;color:#bbb;font-weight:500}
 #message{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);font-size:clamp(20px,5vw,36px);font-weight:1000;text-shadow:0 3px 12px #000;text-align:center;color:#ffd27c;opacity:0;transition:opacity .2s}
-#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;color:#fff;text-shadow:0 0 8px #f33}
+#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:19px;font-weight:400;color:#fff;text-shadow:0 0 7px #f33;opacity:.9}
 #controls{position:absolute;inset:0;pointer-events:none}
 #stickZone{position:absolute;left:12px;bottom:max(18px,env(safe-area-inset-bottom));width: min(32vw,150px);height:min(32vw,150px);pointer-events:auto}
 #stickBase{position:absolute;inset:0;border-radius:50%;border:2px solid #ffffff55;background:#0006}
 #stick{position:absolute;width:42%;height:42%;left:29%;top:29%;border-radius:50%;background:#d7dce088;border:2px solid #fff9;box-shadow:0 2px 10px #000}
 #lookHint{position:absolute;right:12px;bottom:20px;color:#ffffff80;font-size:11px;text-align:right}
 .action{position:absolute;pointer-events:auto;border:2px solid #ffffff88;border-radius:50%;background:#101820a8;color:#fff;font-weight:900;display:grid;place-items:center;user-select:none}
-#reload{right:110px;bottom:max(115px,calc(env(safe-area-inset-bottom) + 110px));width:58px;height:58px;font-size:12px;background:#263746cc}\n#fire{right:18px;bottom:max(105px,calc(env(safe-area-inset-bottom) + 100px));width:76px;height:76px;background:#9c211dcc;border-color:#ffb0a0;font-size:14px}
+#reload{right:110px;bottom:max(115px,calc(env(safe-area-inset-bottom) + 110px));width:58px;height:58px;font-size:12px;background:#263746cc}
+#fire{right:18px;bottom:max(105px,calc(env(safe-area-inset-bottom) + 100px));width:76px;height:76px;background:#9c211dcc;border-color:#ffb0a0;font-size:14px}
 #jump{right:25px;bottom:max(18px,env(safe-area-inset-bottom));width:58px;height:58px;font-size:24px}
 #pause{position:absolute;right:100px;bottom:max(25px,env(safe-area-inset-bottom));width:48px;height:48px;font-size:18px}
 #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#08090bd9,#120606eF);z-index:5;padding:20px}
@@ -52,7 +53,8 @@ button{border:0;border-radius:10px;padding:13px 22px;background:linear-gradient(
   <div id="crosshair">+</div><div id="message"></div>
   <div id="controls">
     <div id="stickZone"><div id="stickBase"></div><div id="stick"></div></div>
-    <div id="fire" class="action">ОГОНЬ</div>\n    <div id="reload" class="action">ЗАРЯД</div>
+    <div id="fire" class="action">ОГОНЬ</div>
+    <div id="reload" class="action">ЗАРЯД</div>
     <div id="jump" class="action">↑</div>
     <div id="pause" class="action">Ⅱ</div>
     <div id="lookHint">Веди пальцем по правой части экрана,<br>чтобы осмотреться</div>
@@ -105,13 +107,40 @@ for(const [x,z] of [[-5,1],[5,-5],[-5,-13],[5,-21]]){box(x,.8,z,1.7,1.6,1.7,meta
 box(0,2,-27,5,4,.7,metal);box(0,2,-26.58,3.6,3,.12,dark);
 const gateGlow=new THREE.Mesh(new THREE.BoxGeometry(2.5,2.8,.1),new THREE.MeshBasicMaterial({color:0x9b2118}));gateGlow.position.set(0,2,-26.48);scene.add(gateGlow);
 for(let i=0;i<18;i++){const a=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.12),mat(0x9d8580));a.position.set((Math.random()-.5)*16,.03,-25+Math.random()*33);scene.add(a)}
-// player weapon, visible in camera
-const weapon=new THREE.Group(); camera.add(weapon); weapon.position.set(.38,-.36,-.7);
-const gun= new THREE.Mesh(new THREE.BoxGeometry(.18,.16,.65),metal);gun.position.set(0,0,-.12);weapon.add(gun);
-const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.045,.055,.42,12),dark);barrel.rotation.x=Math.PI/2;barrel.position.set(0,.055,-.48);weapon.add(barrel);
-const grip=new THREE.Mesh(new THREE.BoxGeometry(.12,.23,.16),mat(0x17191d));grip.position.set(0,-.17,.02);grip.rotation.x=-.2;weapon.add(grip);
-const muzzleLight=new THREE.PointLight(0xff7b26,0,5);camera.add(muzzleLight);muzzleLight.position.set(.38,-.28,-1.1);
-
+// Detailed first-person pump-action shotgun, attached to the camera
+const weapon=new THREE.Group();
+camera.add(weapon);
+weapon.position.set(.43,-.43,-.88);
+const gunMetal=mat(0x59616a,.32,.78), gunDark=mat(0x171a20,.55,.25), gunWood=mat(0x68402b,.72), gunEdge=mat(0xb0a18a,.3,.65);
+function gunBox(w,h,d,material,x,y,z,rx=0,ry=0,rz=0){
+ const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+ mesh.position.set(x,y,z);mesh.rotation.set(rx,ry,rz);weapon.add(mesh);return mesh;
+}
+function gunTube(radius,length,material,x,y,z){
+ const mesh=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,length,12),material);
+ mesh.rotation.x=Math.PI/2;mesh.position.set(x,y,z);weapon.add(mesh);return mesh;
+}
+// Receiver and upper rail
+gunBox(.25,.2,.52,gunMetal,0,0,-.18);
+gunBox(.28,.045,.58,gunDark,0,.125,-.2);
+for(let i=0;i<5;i++)gunBox(.035,.018,.055,gunEdge,0,.158,-.38+i*.09);
+// Long barrel, muzzle ring and front sight
+gunTube(.052,.82,gunDark,0,.055,-.78);
+gunTube(.061,.075,gunEdge,0,.055,-1.19);
+gunBox(.035,.085,.045,gunEdge,0,.13,-1.02);
+// Pump fore-end with grooves
+gunBox(.205,.15,.34,gunWood,0,-.055,-.62);
+for(let i=0;i<4;i++)gunBox(.215,.012,.018,gunEdge,0,-.055,-.75+i*.075);
+// Stock, grip and trigger guard
+gunBox(.22,.16,.34,gunWood,0,-.035,.23);
+gunBox(.16,.25,.18,gunDark,0,-.19,.02,.22);
+gunBox(.105,.22,.15,gunWood,0,-.205,-.02,-.18);
+const guard=new THREE.Mesh(new THREE.TorusGeometry(.085,.012,6,16,Math.PI),gunEdge);
+guard.position.set(0,-.13,-.19);guard.rotation.y=Math.PI/2;weapon.add(guard);
+// Small red receiver marking
+gunBox(.012,.055,.13,ember,.132,.015,-.18);
+const muzzleLight=new THREE.PointLight(0xff7b26,0,5);
+camera.add(muzzleLight);muzzleLight.position.set(.43,-.34,-1.28);
 const enemies=[];
 function makeDemon(x,z,scale=1){
  const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(scale);
@@ -137,7 +166,7 @@ let msgTimer;
 function message(t){const e=document.querySelector('#message');e.textContent=t;e.style.opacity=1;clearTimeout(msgTimer);msgTimer=setTimeout(()=>e.style.opacity=0,1400)}
 function damage(n){const absorbed=Math.min(armor,Math.ceil(n*.55));armor-=absorbed;health=Math.max(0,health-(n-absorbed));updateHud();if(health<=0){gameOver=true;showEnd(false)}}
 function showEnd(win){paused=true;document.querySelector('#overlay').style.display='flex';document.querySelector('#card').innerHTML=`<h1>${win?'ПОБЕДА':'GAME OVER'}</h1><p>${win?'Крепость зачищена!':'Демоны оказались сильнее.'}</p><p>Уничтожено демонов: ${kills}/5</p><button id="restart">ИГРАТЬ СНОВА</button>`;document.querySelector('#restart').onclick=()=>location.reload()}
-function shoot(){if(!started||paused||gameOver)return;const now=performance.now();if(now-lastShot<430)return;lastShot=now;if(ammo<=0){message('НЕТ ПАТРОНОВ');return}ammo--;updateHud();weapon.position.z=-.82;weapon.rotation.x=-.08;muzzleLight.intensity=8;setTimeout(()=>{weapon.position.z=-.7;weapon.rotation.x=0;muzzleLight.intensity=0},90);
+function shoot(){if(!started||paused||gameOver)return;const now=performance.now();if(now-lastShot<430)return;lastShot=now;if(ammo<=0){message('НЕТ ПАТРОНОВ');return}ammo--;updateHud();weapon.position.z=-1.0;weapon.rotation.x=-.10;muzzleLight.intensity=8;setTimeout(()=>{weapon.position.z=-.88;weapon.rotation.x=0;muzzleLight.intensity=0},90);
  const dir=new THREE.Vector3();camera.getWorldDirection(dir);
  let target=null,best=.965;
  for(const e of enemies){if(!e.alive)continue;const to=e.group.position.clone().add(new THREE.Vector3(0,1.3,0)).sub(camera.position).normalize();const dot=dir.dot(to);if(dot>best){const ray=new THREE.Raycaster(camera.position,dir,0,22);const hits=ray.intersectObject(e.group,true);if(hits.length){best=dot;target=e}}}
@@ -174,7 +203,9 @@ let lookId=null,lastX=0,lastY=0;
 renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'){if(e.button===0)shoot();return}if(e.clientX>innerWidth*.38){lookId=e.pointerId;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(lookId)}});
 renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId===lookId){yaw-=(e.clientX-lastX)*.006;pitch=THREE.MathUtils.clamp(pitch-(e.clientY-lastY)*.005,-1.15,1.15);lastX=e.clientX;lastY=e.clientY}});
 renderer.domElement.addEventListener('pointerup',e=>{if(e.pointerId===lookId)lookId=null});
-function reload(){if(!started||paused||ammo>=12||reserve<=0)return;const n=Math.min(12-ammo,reserve);ammo+=n;reserve-=n;updateHud();message('ПЕРЕЗАРЯДКА')}\ndocument.querySelector('#reload').addEventListener('pointerdown',reload);\nconst fire=document.querySelector('#fire');fire.addEventListener('pointerdown',e=>{fireHeld=true;fire.setPointerCapture(e.pointerId);shoot()});['pointerup','pointercancel','lostpointercapture'].forEach(n=>fire.addEventListener(n,()=>fireHeld=false));
+function reload(){if(!started||paused||ammo>=12||reserve<=0)return;const n=Math.min(12-ammo,reserve);ammo+=n;reserve-=n;updateHud();message('ПЕРЕЗАРЯДКА')}
+document.querySelector('#reload').addEventListener('pointerdown',reload);
+const fire=document.querySelector('#fire');fire.addEventListener('pointerdown',e=>{fireHeld=true;fire.setPointerCapture(e.pointerId);shoot()});['pointerup','pointercancel','lostpointercapture'].forEach(n=>fire.addEventListener(n,()=>fireHeld=false));
 document.querySelector('#jump').addEventListener('pointerdown',()=>{if(onGround&&!paused){velY=5.5;onGround=false}});
 document.querySelector('#pause').addEventListener('pointerdown',()=>{if(!started)return;paused=!paused;message(paused?'ПАУЗА':'ПРОДОЛЖАЕМ')});
 addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&onGround){velY=5.5;onGround=false}if(e.code==='Escape'&&started)paused=!paused;if(e.code==='KeyR')reload()});
