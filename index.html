@@ -110,7 +110,8 @@ for(let i=0;i<18;i++){const a=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.12),
 // Detailed first-person pump-action shotgun, attached to the camera
 const weapon=new THREE.Group();
 camera.add(weapon);
-weapon.position.set(.43,-.43,-.88);
+weapon.position.set(.58,-.52,-.95);
+weapon.scale.setScalar(1.7);
 const gunMetal=mat(0x59616a,.32,.78), gunDark=mat(0x171a20,.55,.25), gunWood=mat(0x68402b,.72), gunEdge=mat(0xb0a18a,.3,.65);
 function gunBox(w,h,d,material,x,y,z,rx=0,ry=0,rz=0){
  const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
@@ -166,7 +167,7 @@ let msgTimer;
 function message(t){const e=document.querySelector('#message');e.textContent=t;e.style.opacity=1;clearTimeout(msgTimer);msgTimer=setTimeout(()=>e.style.opacity=0,1400)}
 function damage(n){const absorbed=Math.min(armor,Math.ceil(n*.55));armor-=absorbed;health=Math.max(0,health-(n-absorbed));updateHud();if(health<=0){gameOver=true;showEnd(false)}}
 function showEnd(win){paused=true;document.querySelector('#overlay').style.display='flex';document.querySelector('#card').innerHTML=`<h1>${win?'ПОБЕДА':'GAME OVER'}</h1><p>${win?'Крепость зачищена!':'Демоны оказались сильнее.'}</p><p>Уничтожено демонов: ${kills}/5</p><button id="restart">ИГРАТЬ СНОВА</button>`;document.querySelector('#restart').onclick=()=>location.reload()}
-function shoot(){if(!started||paused||gameOver)return;const now=performance.now();if(now-lastShot<430)return;lastShot=now;if(ammo<=0){message('НЕТ ПАТРОНОВ');return}ammo--;updateHud();weapon.position.z=-1.0;weapon.rotation.x=-.10;muzzleLight.intensity=8;setTimeout(()=>{weapon.position.z=-.88;weapon.rotation.x=0;muzzleLight.intensity=0},90);
+function shoot(){if(!started||paused||gameOver)return;const now=performance.now();if(now-lastShot<430)return;lastShot=now;if(ammo<=0){message('НЕТ ПАТРОНОВ');return}ammo--;updateHud();weapon.position.z=-1.08;weapon.rotation.x=-.10;muzzleLight.intensity=8;setTimeout(()=>{weapon.position.z=-.95;weapon.rotation.x=0;muzzleLight.intensity=0},90);
  const dir=new THREE.Vector3();camera.getWorldDirection(dir);
  let target=null,best=.965;
  for(const e of enemies){if(!e.alive)continue;const to=e.group.position.clone().add(new THREE.Vector3(0,1.3,0)).sub(camera.position).normalize();const dot=dir.dot(to);if(dot>best){const ray=new THREE.Raycaster(camera.position,dir,0,22);const hits=ray.intersectObject(e.group,true);if(hits.length){best=dot;target=e}}}
@@ -182,7 +183,7 @@ function update(dt,t){
  camera.position.x=THREE.MathUtils.clamp(camera.position.x,-7.7,7.7);camera.position.z=THREE.MathUtils.clamp(camera.position.z,-26,7.8);
  velY-=15*dt;camera.position.y+=velY*dt;if(camera.position.y<1.65){camera.position.y=1.65;velY=0;onGround=true}
  camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
- weapon.position.y=-.36+Math.sin(t*.009)*.008*(v.length()>0?2:1);
+ weapon.position.y=-.52+Math.sin(t*.009)*.012*(v.length()>0?2:1);
  enemies.forEach(e=>{if(!e.alive)return;e.phase+=dt*4;e.group.position.y=Math.sin(e.phase)*.035;const dx=camera.position.x-e.group.position.x,dz=camera.position.z-e.group.position.z,d=Math.hypot(dx,dz);if(d>2.8&&d<18){e.group.position.x+=dx/d*.7*dt;e.group.position.z+=dz/d*.7*dt}else if(d<=2.8){if(Math.random()<dt*.65)damage(5)}});
  pickups.forEach(p=>{p.mesh.rotation.y+=dt*1.2;p.mesh.position.y=p.base+Math.sin(t*.002+p.mesh.position.x)*.1;if(p.mesh.visible&&p.mesh.position.distanceTo(camera.position)<1.35){p.mesh.visible=false;if(p.type==='health')health=Math.min(100,health+25);if(p.type==='armor')armor=Math.min(100,armor+25);if(p.type==='ammo')reserve+=12;updateHud();message('ПРЕДМЕТ ПОДОБРАН')}});
  if(fireHeld)shoot();
