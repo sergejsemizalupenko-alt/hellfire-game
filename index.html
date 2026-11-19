@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#120909">
+<title>HELLFIRE — Prototype 0.2</title>
+<style>
+:root{--red:#e43b25;--gold:#ffbd57;--panel:rgba(8,10,14,.72)}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090909;color:#fff;font-family:system-ui,Arial;touch-action:none}
+#game{position:fixed;inset:0}canvas{display:block}
+#hud{position:fixed;inset:0;pointer-events:none}
+.panel{background:var(--panel);border:1px solid #ffffff30;border-radius:12px;backdrop-filter:blur(5px);box-shadow:0 4px 22px #0008}
+#stats{position:absolute;top:max(10px,env(safe-area-inset-top));left:10px;display:flex;gap:7px;padding:8px 10px;font-weight:800;font-size:clamp(13px,2.8vw,19px)}
+.stat{min-width:66px}.stat b{color:#ff6251}
+#objective{position:absolute;top:70px;left:12px;padding:7px 10px;font-size:clamp(11px,2.5vw,15px);color:#ffd66e}
+#weapon{position:absolute;top:max(10px,env(safe-area-inset-top));right:10px;padding:8px 12px;font-weight:800;text-align:center;font-size:13px}
+#weapon small{display:block;color:#bbb;font-weight:500}
+#message{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);font-size:clamp(20px,5vw,36px);font-weight:1000;text-shadow:0 3px 12px #000;text-align:center;color:#ffd27c;opacity:0;transition:opacity .2s}
+#crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;color:#fff;text-shadow:0 0 8px #f33}
+#controls{position:absolute;inset:0;pointer-events:none}
+#stickZone{position:absolute;left:12px;bottom:max(18px,env(safe-area-inset-bottom));width: min(32vw,150px);height:min(32vw,150px);pointer-events:auto}
+#stickBase{position:absolute;inset:0;border-radius:50%;border:2px solid #ffffff55;background:#0006}
+#stick{position:absolute;width:42%;height:42%;left:29%;top:29%;border-radius:50%;background:#d7dce088;border:2px solid #fff9;box-shadow:0 2px 10px #000}
+#lookHint{position:absolute;right:12px;bottom:20px;color:#ffffff80;font-size:11px;text-align:right}
+.action{position:absolute;pointer-events:auto;border:2px solid #ffffff88;border-radius:50%;background:#101820a8;color:#fff;font-weight:900;display:grid;place-items:center;user-select:none}
+#fire{right:18px;bottom:max(105px,calc(env(safe-area-inset-bottom) + 100px));width:76px;height:76px;background:#9c211dcc;border-color:#ffb0a0;font-size:14px}
+#jump{right:25px;bottom:max(18px,env(safe-area-inset-bottom));width:58px;height:58px;font-size:24px}
+#pause{position:absolute;right:100px;bottom:max(25px,env(safe-area-inset-bottom));width:48px;height:48px;font-size:18px}
+#overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#08090bd9,#120606eF);z-index:5;padding:20px}
+#card{width:min(440px,94vw);padding:25px;text-align:center;border:1px solid #a94738;border-radius:18px;background:linear-gradient(145deg,#261414f2,#080a10f5);box-shadow:0 15px 70px #000}
+h1{margin:0;color:#f04a32;font-size:clamp(38px,10vw,60px);letter-spacing:3px;text-shadow:0 4px #55150e}
+#card p{color:#ddd;line-height:1.5}
+button{border:0;border-radius:10px;padding:13px 22px;background:linear-gradient(#ff6546,#a51d19);color:white;font-weight:900;font-size:16px}
+#sub{font-size:12px;color:#aaa!important}
+#desktop{display:none;position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:#fff9;font-size:12px;white-space:nowrap}
+@media (hover:hover) and (pointer:fine){#desktop{display:block}#controls{display:none}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+  <div id="stats" class="panel">
+    <div class="stat">❤ <b id="health">100</b></div>
+    <div class="stat">🛡 <b id="armor">25</b></div>
+    <div class="stat">▰ <b id="ammo">12/48</b></div>
+  </div>
+  <div id="objective" class="panel">ЦЕЛЬ: Уничтожь демонов — <b id="kills">0/5</b></div>
+  <div id="weapon" class="panel">ДРОБОВИК<small>HELLFIRE / Mk-I</small></div>
+  <div id="crosshair">+</div><div id="message"></div>
+  <div id="controls">
+    <div id="stickZone"><div id="stickBase"></div><div id="stick"></div></div>
+    <div id="fire" class="action">ОГОНЬ</div>
+    <div id="jump" class="action">↑</div>
+    <div id="pause" class="action">Ⅱ</div>
+    <div id="lookHint">Веди пальцем по правой части экрана,<br>чтобы осмотреться</div>
+  </div>
+  <div id="desktop">WASD — движение · мышь — обзор · ЛКМ — огонь · Esc — пауза</div>
+</div>
+<div id="overlay">
+  <div id="card">
+    <h1>HELLFIRE</h1>
+    <p><b>ПРОТОТИП 0.2 · ANDROID FPS</b></p>
+    <p>Заброшенная крепость. Пять демонов. Один выход.<br>Сложность: <b style="color:#8fe08f">ЛЁГКАЯ</b></p>
+    <button id="start">НАЧАТЬ ЗАЧИСТКУ</button>
+    <p id="sub">Тестовая сборка: графика и управление находятся в разработке.</p>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const root=document.querySelector('#game');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x171015);
+scene.fog=new THREE.Fog(0x171015,13,48);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,100);
+camera.position.set(0,1.65,7);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
+root.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0x9bb5d4,0x38130d,1.25));
+const key=new THREE.DirectionalLight(0xffb18a,2.0); key.position.set(-5,10,6); key.castShadow=true; key.shadow.mapSize.set(1024,1024); scene.add(key);
+const red=new THREE.PointLight(0xff321c,45,22); red.position.set(0,4,-10); scene.add(red);
+const blue=new THREE.PointLight(0x246bff,18,12); blue.position.set(5,2,-5); scene.add(blue);
+
+const mat=(c,r=.85,m=0)=>new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:m});
+const stone=mat(0x39363a), dark=mat(0x211f24), floorMat=mat(0x4b4140,.95), metal=mat(0x343b43,.45,.65), ember=mat(0xff3b1e,.4), demonMat=mat(0x8d2822,.65);
+function box(x,y,z,sx,sy,sz,material,cast=true){const o=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),material);o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;scene.add(o);return o}
+box(0,-.18,-9,18,.35,38,floorMat,false);
+box(0,5.2,-9,18,.35,38,dark,false);
+for(let z=9;z>-28;z-=4){box(-9,2.5,z,.5,5,4,stone);box(9,2.5,z,.5,5,4,stone);box(0,5,z,18,.5,4,dark)}
+for(let x=-8;x<=8;x+=4){box(x,2.5,-28,3,5,.5,stone);box(x,2.5,9,3,5,.5,stone)}
+// Pillars, crates, glowing wall lamps
+for(const z of [5,-3,-11,-19,-25]){
+ for(const x of [-7.7,7.7]){box(x,2.1,z,.9,4.2,.9,metal);box(x,4.35,z,.18,.18,1.05,ember,false)}
+}
+for(const [x,z] of [[-5,1],[5,-5],[-5,-13],[5,-21]]){box(x,.8,z,1.7,1.6,1.7,metal);box(x,1.62,z,1.75,.12,1.75,stone)}
+// far gate
+box(0,2,-27,5,4,.7,metal);box(0,2,-26.58,3.6,3,.12,dark);
+const gateGlow=new THREE.Mesh(new THREE.BoxGeometry(2.5,2.8,.1),new THREE.MeshBasicMaterial({color:0x9b2118}));gateGlow.position.set(0,2,-26.48);scene.add(gateGlow);
+for(let i=0;i<18;i++){const a=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.12),mat(0x9d8580));a.position.set((Math.random()-.5)*16,.03,-25+Math.random()*33);scene.add(a)}
+// player weapon, visible in camera
+const weapon=new THREE.Group(); camera.add(weapon); weapon.position.set(.38,-.36,-.7);
+const gun= new THREE.Mesh(new THREE.BoxGeometry(.18,.16,.65),metal);gun.position.set(0,0,-.12);weapon.add(gun);
+const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.045,.055,.42,12),dark);barrel.rotation.x=Math.PI/2;barrel.position.set(0,.055,-.48);weapon.add(barrel);
+const grip=new THREE.Mesh(new THREE.BoxGeometry(.12,.23,.16),mat(0x17191d));grip.position.set(0,-.17,.02);grip.rotation.x=-.2;weapon.add(grip);
+const muzzleLight=new THREE.PointLight(0xff7b26,0,5);camera.add(muzzleLight);muzzleLight.position.set(.38,-.28,-1.1);
+
+const enemies=[];
+function makeDemon(x,z,scale=1){
+ const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(scale);
+ const body=new THREE.Mesh(new THREE.SphereGeometry(.62,16,12),demonMat);body.position.y=1.05;body.scale.set(.85,1.15,.7);body.castShadow=true;g.add(body);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.42,16,12),mat(0xb43a2c));head.position.set(0,1.82,-.05);head.castShadow=true;g.add(head);
+ const eyeMat=new THREE.MeshBasicMaterial({color:0xffd044});
+ for(const ex of [-.17,.17]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.075,8,8),eyeMat);eye.position.set(ex,1.9,-.42);g.add(eye)}
+ for(const side of [-1,1]){const horn=new THREE.Mesh(new THREE.ConeGeometry(.13,.55,8),mat(0xd6b38c));horn.position.set(side*.34,2.18,-.03);horn.rotation.z=side*.55;g.add(horn)}
+ for(const side of [-1,1]){const leg=new THREE.Mesh(new THREE.CylinderGeometry(.14,.2,.65,8),demonMat);leg.position.set(side*.25,.38,0);g.add(leg)}
+ scene.add(g);enemies.push({group:g,hp:3,alive:true,hit:0,phase:Math.random()*6});
+}
+[[-3,-9],[3,-13],[0,-18],[-4,-23],[4,-25]].forEach(([x,z],i)=>makeDemon(x,z,i===2?1.2:1));
+const pickups=[];
+function pickup(x,z,color,type){const mesh=new THREE.Mesh(new THREE.BoxGeometry(.55,.55,.55),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.55}));mesh.position.set(x,.65,z);scene.add(mesh);pickups.push({mesh,type,base:.65})}
+pickup(-5,-7,0x39aaff,'armor');pickup(5,-16,0x44dd55,'health');pickup(0,-21,0xffc044,'ammo');
+
+let health=100,armor=25,ammo=12,reserve=48,kills=0,started=false,paused=false,gameOver=false;
+let yaw=0,pitch=0,moveX=0,moveY=0,velY=0,onGround=true,last=performance.now(),fireHeld=false,lastShot=0;
+const keys={};
+const healthEl=document.querySelector('#health'),armorEl=document.querySelector('#armor'),ammoEl=document.querySelector('#ammo'),killsEl=document.querySelector('#kills');
+function updateHud(){healthEl.textContent=health;armorEl.textContent=armor;ammoEl.textContent=ammo+'/'+reserve;killsEl.textContent=kills+'/5'}
+let msgTimer;
+function message(t){const e=document.querySelector('#message');e.textContent=t;e.style.opacity=1;clearTimeout(msgTimer);msgTimer=setTimeout(()=>e.style.opacity=0,1400)}
+function damage(n){const absorbed=Math.min(armor,Math.ceil(n*.55));armor-=absorbed;health=Math.max(0,health-(n-absorbed));updateHud();if(health<=0){gameOver=true;showEnd(false)}}
+function showEnd(win){paused=true;document.querySelector('#overlay').style.display='flex';document.querySelector('#card').innerHTML=`<h1>${win?'ПОБЕДА':'GAME OVER'}</h1><p>${win?'Крепость зачищена!':'Демоны оказались сильнее.'}</p><p>Уничтожено демонов: ${kills}/5</p><button id="restart">ИГРАТЬ СНОВА</button>`;document.querySelector('#restart').onclick=()=>location.reload()}
+function shoot(){if(!started||paused||gameOver)return;const now=performance.now();if(now-lastShot<430)return;lastShot=now;if(ammo<=0){message('НЕТ ПАТРОНОВ');return}ammo--;updateHud();weapon.position.z=-.82;weapon.rotation.x=-.08;muzzleLight.intensity=8;setTimeout(()=>{weapon.position.z=-.7;weapon.rotation.x=0;muzzleLight.intensity=0},90);
+ const dir=new THREE.Vector3();camera.getWorldDirection(dir);
+ let target=null,best=.965;
+ for(const e of enemies){if(!e.alive)continue;const to=e.group.position.clone().add(new THREE.Vector3(0,1.3,0)).sub(camera.position).normalize();const dot=dir.dot(to);if(dot>best){const ray=new THREE.Raycaster(camera.position,dir,0,22);const hits=ray.intersectObject(e.group,true);if(hits.length){best=dot;target=e}}}
+ if(target){target.hp--;target.hit=1;target.group.scale.multiplyScalar(.96);if(target.hp<=0){target.alive=false;scene.remove(target.group);kills++;updateHud();message('ДЕМОН УНИЧТОЖЕН');if(kills===5)setTimeout(()=>showEnd(true),800)}}
+}
+function update(dt,t){
+ if(!started||paused)return;
+ const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+ const right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+ let mx=moveX+(keys.KeyD?1:0)-(keys.KeyA?1:0),my=moveY+(keys.KeyW?1:0)-(keys.KeyS?1:0);
+ const v=forward.multiplyScalar(my).add(right.multiplyScalar(mx));if(v.length()>1)v.normalize();
+ camera.position.addScaledVector(v,5.0*dt);
+ camera.position.x=THREE.MathUtils.clamp(camera.position.x,-7.7,7.7);camera.position.z=THREE.MathUtils.clamp(camera.position.z,-26,7.8);
+ velY-=15*dt;camera.position.y+=velY*dt;if(camera.position.y<1.65){camera.position.y=1.65;velY=0;onGround=true}
+ camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
+ weapon.position.y=-.36+Math.sin(t*.009)*.008*(v.length()>0?2:1);
+ enemies.forEach(e=>{if(!e.alive)return;e.phase+=dt*4;e.group.position.y=Math.sin(e.phase)*.035;const dx=camera.position.x-e.group.position.x,dz=camera.position.z-e.group.position.z,d=Math.hypot(dx,dz);if(d>1.65&&d<18){e.group.position.x+=dx/d*.7*dt;e.group.position.z+=dz/d*.7*dt}else if(d<=1.65){if(Math.random()<dt*.65)damage(5)}});
+ pickups.forEach(p=>{p.mesh.rotation.y+=dt*1.2;p.mesh.position.y=p.base+Math.sin(t*.002+p.mesh.position.x)*.1;if(p.mesh.visible&&p.mesh.position.distanceTo(camera.position)<1.35){p.mesh.visible=false;if(p.type==='health')health=Math.min(100,health+25);if(p.type==='armor')armor=Math.min(100,armor+25);if(p.type==='ammo')reserve+=12;updateHud();message('ПРЕДМЕТ ПОДОБРАН')}});
+ if(fireHeld)shoot();
+}
+function animate(t){requestAnimationFrame(animate);const dt=Math.min((t-last)/1000,.04);last=t;update(dt,t);renderer.render(scene,camera)}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+
+// Touch joystick
+const zone=document.querySelector('#stickZone'),stick=document.querySelector('#stick');let stickId=null,baseRect;
+zone.addEventListener('pointerdown',e=>{stickId=e.pointerId;zone.setPointerCapture(stickId);baseRect=zone.getBoundingClientRect();joy(e)});
+zone.addEventListener('pointermove',e=>{if(e.pointerId===stickId)joy(e)});
+function joy(e){const cx=baseRect.left+baseRect.width/2,cy=baseRect.top+baseRect.height/2,dx=e.clientX-cx,dy=e.clientY-cy,r=baseRect.width*.34,len=Math.hypot(dx,dy),s=Math.min(1,r/Math.max(1,len));moveX=dx*s/r;moveY=-dy*s/r;stick.style.transform=`translate(${dx*s}px,${dy*s}px)`}
+function endJoy(e){if(e.pointerId===stickId){stickId=null;moveX=moveY=0;stick.style.transform=''}}
+zone.addEventListener('pointerup',endJoy);zone.addEventListener('pointercancel',endJoy);
+// Drag anywhere on right half to look
+let lookId=null,lastX=0,lastY=0;
+renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'){if(e.button===0)shoot();return}if(e.clientX>innerWidth*.38){lookId=e.pointerId;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(lookId)}});
+renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId===lookId){yaw-=(e.clientX-lastX)*.006;pitch=THREE.MathUtils.clamp(pitch-(e.clientY-lastY)*.005,-1.15,1.15);lastX=e.clientX;lastY=e.clientY}});
+renderer.domElement.addEventListener('pointerup',e=>{if(e.pointerId===lookId)lookId=null});
+const fire=document.querySelector('#fire');fire.addEventListener('pointerdown',e=>{fireHeld=true;fire.setPointerCapture(e.pointerId);shoot()});['pointerup','pointercancel','lostpointercapture'].forEach(n=>fire.addEventListener(n,()=>fireHeld=false));
+document.querySelector('#jump').addEventListener('pointerdown',()=>{if(onGround&&!paused){velY=5.5;onGround=false}});
+document.querySelector('#pause').addEventListener('pointerdown',()=>{if(!started)return;paused=!paused;message(paused?'ПАУЗА':'ПРОДОЛЖАЕМ')});
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&onGround){velY=5.5;onGround=false}if(e.code==='Escape'&&started)paused=!paused;if(e.code==='KeyR'&&ammo===0&&reserve>0){const n=Math.min(12,reserve);ammo=n;reserve-=n;updateHud()}});
+addEventListener('keyup',e=>keys[e.code]=false);
+document.querySelector('#start').onclick=()=>{started=true;paused=false;document.querySelector('#overlay').style.display='none';if(matchMedia('(hover:hover) and (pointer:fine)').matches)renderer.domElement.requestPointerLock?.()};
+updateHud();
+</script>
+</body>
+</html>
