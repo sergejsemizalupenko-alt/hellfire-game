@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#120909">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon.svg">
 <title>HELLFIRE — Prototype 0.2</title>
 <style>
 :root{--red:#e43b25;--gold:#ffbd57;--panel:rgba(8,10,14,.72)}
@@ -180,5 +182,6 @@ addEventListener('keyup',e=>keys[e.code]=false);
 document.querySelector('#start').onclick=()=>{started=true;paused=false;document.querySelector('#overlay').style.display='none';if(matchMedia('(hover:hover) and (pointer:fine)').matches)renderer.domElement.requestPointerLock?.()};
 updateHud();
 </script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(console.error));}</script>
 </body>
 </html>
