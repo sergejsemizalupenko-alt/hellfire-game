@@ -10,7 +10,7 @@
 <style>
 :root{--red:#e43b25;--gold:#ffbd57;--panel:rgba(8,10,14,.72)}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090909;color:#fff;font-family:system-ui,Arial;touch-action:none}
-#game{position:fixed;inset:0}canvas{display:block}
+#game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%;position:absolute;inset:0}
 #hud{position:fixed;inset:0;pointer-events:none}
 .panel{background:var(--panel);border:1px solid #ffffff30;border-radius:12px;backdrop-filter:blur(5px);box-shadow:0 4px 22px #0008}
 #stats{position:absolute;top:max(10px,env(safe-area-inset-top));left:10px;display:flex;gap:7px;padding:8px 10px;font-weight:800;font-size:clamp(13px,2.8vw,19px)}
@@ -26,7 +26,7 @@
 #stick{position:absolute;width:42%;height:42%;left:29%;top:29%;border-radius:50%;background:#d7dce088;border:2px solid #fff9;box-shadow:0 2px 10px #000}
 #lookHint{position:absolute;right:12px;bottom:20px;color:#ffffff80;font-size:11px;text-align:right}
 .action{position:absolute;pointer-events:auto;border:2px solid #ffffff88;border-radius:50%;background:#101820a8;color:#fff;font-weight:900;display:grid;place-items:center;user-select:none}
-#fire{right:18px;bottom:max(105px,calc(env(safe-area-inset-bottom) + 100px));width:76px;height:76px;background:#9c211dcc;border-color:#ffb0a0;font-size:14px}
+#reload{right:110px;bottom:max(115px,calc(env(safe-area-inset-bottom) + 110px));width:58px;height:58px;font-size:12px;background:#263746cc}\n#fire{right:18px;bottom:max(105px,calc(env(safe-area-inset-bottom) + 100px));width:76px;height:76px;background:#9c211dcc;border-color:#ffb0a0;font-size:14px}
 #jump{right:25px;bottom:max(18px,env(safe-area-inset-bottom));width:58px;height:58px;font-size:24px}
 #pause{position:absolute;right:100px;bottom:max(25px,env(safe-area-inset-bottom));width:48px;height:48px;font-size:18px}
 #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#08090bd9,#120606eF);z-index:5;padding:20px}
@@ -52,7 +52,7 @@ button{border:0;border-radius:10px;padding:13px 22px;background:linear-gradient(
   <div id="crosshair">+</div><div id="message"></div>
   <div id="controls">
     <div id="stickZone"><div id="stickBase"></div><div id="stick"></div></div>
-    <div id="fire" class="action">ОГОНЬ</div>
+    <div id="fire" class="action">ОГОНЬ</div>\n    <div id="reload" class="action">ЗАРЯД</div>
     <div id="jump" class="action">↑</div>
     <div id="pause" class="action">Ⅱ</div>
     <div id="lookHint">Веди пальцем по правой части экрана,<br>чтобы осмотреться</div>
@@ -77,10 +77,10 @@ scene.background=new THREE.Color(0x171015);
 scene.fog=new THREE.Fog(0x171015,13,48);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,100);
 camera.position.set(0,1.65,7);
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance',stencil:false,depth:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.15));
 renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled=false;
 renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
 root.appendChild(renderer.domElement);
 
@@ -154,7 +154,7 @@ function update(dt,t){
  velY-=15*dt;camera.position.y+=velY*dt;if(camera.position.y<1.65){camera.position.y=1.65;velY=0;onGround=true}
  camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
  weapon.position.y=-.36+Math.sin(t*.009)*.008*(v.length()>0?2:1);
- enemies.forEach(e=>{if(!e.alive)return;e.phase+=dt*4;e.group.position.y=Math.sin(e.phase)*.035;const dx=camera.position.x-e.group.position.x,dz=camera.position.z-e.group.position.z,d=Math.hypot(dx,dz);if(d>1.65&&d<18){e.group.position.x+=dx/d*.7*dt;e.group.position.z+=dz/d*.7*dt}else if(d<=1.65){if(Math.random()<dt*.65)damage(5)}});
+ enemies.forEach(e=>{if(!e.alive)return;e.phase+=dt*4;e.group.position.y=Math.sin(e.phase)*.035;const dx=camera.position.x-e.group.position.x,dz=camera.position.z-e.group.position.z,d=Math.hypot(dx,dz);if(d>2.8&&d<18){e.group.position.x+=dx/d*.7*dt;e.group.position.z+=dz/d*.7*dt}else if(d<=2.8){if(Math.random()<dt*.65)damage(5)}});
  pickups.forEach(p=>{p.mesh.rotation.y+=dt*1.2;p.mesh.position.y=p.base+Math.sin(t*.002+p.mesh.position.x)*.1;if(p.mesh.visible&&p.mesh.position.distanceTo(camera.position)<1.35){p.mesh.visible=false;if(p.type==='health')health=Math.min(100,health+25);if(p.type==='armor')armor=Math.min(100,armor+25);if(p.type==='ammo')reserve+=12;updateHud();message('ПРЕДМЕТ ПОДОБРАН')}});
  if(fireHeld)shoot();
 }
@@ -174,10 +174,10 @@ let lookId=null,lastX=0,lastY=0;
 renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'){if(e.button===0)shoot();return}if(e.clientX>innerWidth*.38){lookId=e.pointerId;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(lookId)}});
 renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId===lookId){yaw-=(e.clientX-lastX)*.006;pitch=THREE.MathUtils.clamp(pitch-(e.clientY-lastY)*.005,-1.15,1.15);lastX=e.clientX;lastY=e.clientY}});
 renderer.domElement.addEventListener('pointerup',e=>{if(e.pointerId===lookId)lookId=null});
-const fire=document.querySelector('#fire');fire.addEventListener('pointerdown',e=>{fireHeld=true;fire.setPointerCapture(e.pointerId);shoot()});['pointerup','pointercancel','lostpointercapture'].forEach(n=>fire.addEventListener(n,()=>fireHeld=false));
+function reload(){if(!started||paused||ammo>=12||reserve<=0)return;const n=Math.min(12-ammo,reserve);ammo+=n;reserve-=n;updateHud();message('ПЕРЕЗАРЯДКА')}\ndocument.querySelector('#reload').addEventListener('pointerdown',reload);\nconst fire=document.querySelector('#fire');fire.addEventListener('pointerdown',e=>{fireHeld=true;fire.setPointerCapture(e.pointerId);shoot()});['pointerup','pointercancel','lostpointercapture'].forEach(n=>fire.addEventListener(n,()=>fireHeld=false));
 document.querySelector('#jump').addEventListener('pointerdown',()=>{if(onGround&&!paused){velY=5.5;onGround=false}});
 document.querySelector('#pause').addEventListener('pointerdown',()=>{if(!started)return;paused=!paused;message(paused?'ПАУЗА':'ПРОДОЛЖАЕМ')});
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&onGround){velY=5.5;onGround=false}if(e.code==='Escape'&&started)paused=!paused;if(e.code==='KeyR'&&ammo===0&&reserve>0){const n=Math.min(12,reserve);ammo=n;reserve-=n;updateHud()}});
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&onGround){velY=5.5;onGround=false}if(e.code==='Escape'&&started)paused=!paused;if(e.code==='KeyR')reload()});
 addEventListener('keyup',e=>keys[e.code]=false);
 document.querySelector('#start').onclick=()=>{started=true;paused=false;document.querySelector('#overlay').style.display='none';if(matchMedia('(hover:hover) and (pointer:fine)').matches)renderer.domElement.requestPointerLock?.()};
 updateHud();
