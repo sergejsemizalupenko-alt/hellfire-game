@@ -1,0 +1,20 @@
+{
+  "name": "HELLFIRE",
+  "short_name": "HELLFIRE",
+  "description": "Мобильный 3D-шутер для Android",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#090909",
+  "theme_color": "#120909",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
