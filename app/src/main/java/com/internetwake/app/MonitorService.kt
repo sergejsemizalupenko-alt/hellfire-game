@@ -65,11 +65,32 @@ class MonitorService : Service() {
                     lock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "InternetWake:Monitor").also { it.acquire() }
                     log("Мониторинг запущен. Интервал: $interval сек.")
                     worker = thread(name = "InternetWakeWorker") { loop() }
+                    startAutomaticSpeedTests()
                 }
             }
         }
         return START_STICKY
     }
+    private fun startAutomaticSpeedTests() {
+        if (speedWorker?.isAlive == true) return
+        speedWorker = thread(name = "InternetWakeAutoSpeedTest") {
+            while (active.get()) {
+                try {
+                    runSpeedTest()
+                } catch (e: Exception) {
+                    sendSpeed("error", e.message ?: "Ошибка теста")
+                    log("Ошибка автоматического теста скорости: ${e.message ?: "сеть"}")
+                } finally {
+                    sendSpeed("done", "ok")
+                }
+                if (active.get()) {
+                    try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
+                }
+            }
+            speedWorker = null
+        }
+    }
+
     private fun loop() {
         var selected: List<Pair<Server, Long>> = emptyList()
         var lastDiscovery = 0L
@@ -222,7 +243,7 @@ class MonitorService : Service() {
         sendBroadcast(Intent("com.internetwake.EVENT").setPackage(packageName).putExtra("payload", payload.toString()))
     }
     private fun stopMonitor() {
-        active.set(false); worker?.interrupt(); worker = null
+        active.set(false); worker?.interrupt(); worker = null; speedWorker?.interrupt()
         try { lock?.let { if (it.isHeld) it.release() } } catch (_: Exception) { }
         lock = null
         getSharedPreferences(PREF, 0).edit().putBoolean("running", false).apply()
