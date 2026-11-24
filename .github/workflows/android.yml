@@ -1,3 +1,4 @@
+run-name: INTERNET WAKE 2.2 speed test APK
 name: Build INTERNET WAKE APK
 on:
   push:
