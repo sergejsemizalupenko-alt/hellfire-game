@@ -21,4 +21,39 @@ function startMonitoring(){const n=Number(document.getElementById("interval").va
 function runSpeedTest(){const b=document.getElementById("speed");b.disabled=true;b.textContent="ТЕСТИРОВАНИЕ…";AndroidWake.speedTest();}
 function stopMonitoring(){AndroidWake.stop();document.getElementById("start").disabled=false;document.getElementById("stop").disabled=true;document.getElementById("interval").disabled=false;setStatus("ОСТАНОВЛЕНО","#ffc857");}
 let pendingSpeed={};
-window.onNativeEvent=function(e){if(e.type==="speed"){if(e.stage==="server"){document.getElementById("server").textContent="Сервер: "+e.name;pendingSpeed.server=e.name;}if(e.stage==="ping"){document.getElementById("ping").textContent="Пинг: "+e.value+" мс";pendingSpeed.ping=Number(e.value);}if(e.stage==="jitter"){document.getElementById("jitter").textContent="Разброс задержки: "+e.value+" мс";pendingSpeed.jitter=Number(e.value);}if(e.stage==="download"){document.getElementById("download").textContent="Скорость загрузки: "+e.value+" Мбит/с";pendingSpeed.download=Number(e.value);}if(e.stage==="upload"){document.getElementById("upload").textContent="Скорость отдачи: "+e.value+" Мбит/с";pendingSpeed.upload=Number(e.value);addSpeedPoint(pendingSpeed);pendingSpeed={};}if(e.stage==="done"||e.stage==="error"){document.getElementById("speed").disabled=false;document.getElementById("speed").textContent="ПРОВЕРИТЬ СКОРОСТЬ";}}if(e.type==="log"){addLog(e.message,e.time);if(e.message.startsWith("Мониторинг запущен")||e.message.startsWith("Цикл №")||e.try{const s=JSON.parse(AndroidWake.state());logEl.textContent="";(s.entries||[]).forEach(e=>{addLog(e.message,e.time);const sm=e.message.match(/активных серверов\s+(\d+)\/3/);if(sm)setServerCount(sm[1]);else if(e.message.startsWith("Цикл №")&&e.message.includes("нет ответа"))setServerCount(0);});restoreSpeedHistory(s.history||[]);if(s.running){document.getElementById("start").disabled=true;document.getElementById("stop").disabled=false;document.getElementById("interval").disabled=true;setStatus("МОНИТОРИНГ АКТИВЕН");}else setStatus("ОЖИДАНИЕ ЗАПУСКА","#ffc857");}catch(e){logEl.textContent="Не удалось восстановить журнал.";drawChart();}</script></body></html>
+window.onNativeEvent=function(e){
+  if(e.type==="speed"){
+    if(e.stage==="server"){document.getElementById("server").textContent="Сервер: "+e.name;pendingSpeed.server=e.name;}
+    if(e.stage==="ping"){document.getElementById("ping").textContent="Пинг: "+e.value+" мс";pendingSpeed.ping=Number(e.value);}
+    if(e.stage==="jitter"){document.getElementById("jitter").textContent="Разброс задержки: "+e.value+" мс";pendingSpeed.jitter=Number(e.value);}
+    if(e.stage==="download"){document.getElementById("download").textContent="Скорость загрузки: "+e.value+" Мбит/с";pendingSpeed.download=Number(e.value);}
+    if(e.stage==="upload"){document.getElementById("upload").textContent="Скорость отдачи: "+e.value+" Мбит/с";pendingSpeed.upload=Number(e.value);addSpeedPoint(pendingSpeed);pendingSpeed={};}
+    if(e.stage==="done"||e.stage==="error"){document.getElementById("speed").disabled=false;document.getElementById("speed").textContent="ПРОВЕРИТЬ СКОРОСТЬ";}
+  }
+  if(e.type==="log"){
+    addLog(e.message,e.time);
+    if(e.message.startsWith("Мониторинг запущен")||e.message.startsWith("Цикл №")||e.message.includes("активных серверов"))setStatus("МОНИТОРИНГ АКТИВЕН");
+    const sm=e.message.match(/активных серверов\s+(\d+)\/3/);
+    if(sm)setServerCount(sm[1]);
+    else if(e.message.startsWith("Цикл №")&&e.message.includes("нет ответа"))setServerCount(0);
+    if(e.message==="Мониторинг остановлен."){setStatus("ОСТАНОВЛЕНО","#ffc857");serverBox.style.display="none";}
+  }
+};
+try{
+  const s=JSON.parse(AndroidWake.state());
+  logEl.textContent="";
+  (s.entries||[]).forEach(e=>{
+    addLog(e.message,e.time);
+    const sm=e.message.match(/активных серверов\s+(\d+)\/3/);
+    if(sm)setServerCount(sm[1]);
+    else if(e.message.startsWith("Цикл №")&&e.message.includes("нет ответа"))setServerCount(0);
+  });
+  restoreSpeedHistory(s.history||[]);
+  if(s.running){
+    document.getElementById("start").disabled=true;
+    document.getElementById("stop").disabled=false;
+    document.getElementById("interval").disabled=true;
+    setStatus("МОНИТОРИНГ АКТИВЕН");
+  }else setStatus("ОЖИДАНИЕ ЗАПУСКА","#ffc857");
+}catch(e){logEl.textContent="Не удалось восстановить журнал.";drawChart();}
+</script></body></html>
