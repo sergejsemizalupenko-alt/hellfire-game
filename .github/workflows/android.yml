@@ -1,7 +1,7 @@
 name: Build INTERNET WAKE APK
 on:
   push:
-    branches: [internet-wake-android]
+    branches: [internet-wake-android, internet-wake-speedtest]
   workflow_dispatch:
 permissions:
   contents: read
