@@ -1,8 +1,8 @@
-run-name: INTERNET WAKE 2.2 speed test APK
+run-name: INTERNET WAKE 2.3 speed test APK
 name: Build INTERNET WAKE APK
 on:
   push:
-    branches: [internet-wake-android, internet-wake-speedtest]
+    branches: [internet-wake-android, internet-wake-speedtest, internet-wake-speedtest-2.3]
   workflow_dispatch:
 permissions:
   contents: read
