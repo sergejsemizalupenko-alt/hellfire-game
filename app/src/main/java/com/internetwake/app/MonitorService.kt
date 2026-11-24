@@ -14,6 +14,7 @@ class MonitorService : Service() {
     companion object {
         const val ACTION_START = "wake.START"
         const val ACTION_STOP = "wake.STOP"
+        const val ACTION_SPEED = "wake.SPEED"
         private const val CHANNEL = "internet_wake"
         private const val PREF = "wake_log"
         private const val KEY = "entries"
@@ -24,6 +25,7 @@ class MonitorService : Service() {
     }
     private val active = AtomicBoolean(false)
     private var worker: Thread? = null
+    private var speedWorker: Thread? = null
     private var interval = 10
     private var lock: PowerManager.WakeLock? = null
     private val fallback = listOf(
@@ -42,11 +44,20 @@ class MonitorService : Service() {
     ).map { val a = it.split("|"); Server(a[0], a[1], a[2]) }
 
     data class Server(val name: String, val base: String, val path: String)
+    data class SpeedServer(val name: String, val base: String, val dl: String, val ul: String, val ping: String)
     override fun onBind(intent: Intent?) = null
     override fun onCreate() { super.onCreate(); createChannel() }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopMonitor(); stopSelf(); return START_NOT_STICKY }
+            ACTION_SPEED -> {
+                if (speedWorker?.isAlive == true) return START_STICKY
+                startForeground(11, notification("Измерение скорости интернета"))
+                speedWorker = thread(name = "InternetWakeSpeedTest") {
+                    try { runSpeedTest() } catch (e: Exception) { sendSpeed("error", e.message ?: "Ошибка теста"); log("Ошибка теста скорости: ${e.message ?: "сеть"}") }
+                    finally { sendSpeed("done", "ok"); if (!active.get()) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }; speedWorker = null }
+                }
+            }
             ACTION_START -> {
                 interval = intent.getIntExtra("seconds", 10).coerceIn(5, 3600)
                 startForeground(11, notification("Мониторинг запущен"))
@@ -119,6 +130,89 @@ class MonitorService : Service() {
             ((System.nanoTime() - start) / 1_000_000).coerceAtLeast(1)
         } catch (_: Exception) { null } finally { conn?.disconnect() }
     }
+
+    private fun sendSpeed(stage: String, value: String, name: String = "") {
+        val payload = JSONObject().put("type", "speed").put("stage", stage).put("value", value).put("name", name)
+        sendBroadcast(Intent("com.internetwake.EVENT").setPackage(packageName).putExtra("payload", payload.toString()))
+    }
+    private fun runSpeedTest() {
+        log("Начинаем тест скорости LibreSpeed.")
+        val raw = URL("https://raw.githubusercontent.com/librespeed/speedtest/master/server-list.json")
+        val conn = raw.openConnection() as HttpURLConnection
+        conn.connectTimeout = 10000; conn.readTimeout = 10000
+        val arr = JSONArray(conn.inputStream.bufferedReader().use { it.readText() }); conn.disconnect()
+        val region = Regex("Netherlands|Germany|Finland|England|United Kingdom|Poland|Czech|Serbia|Lithuania|Italy|France|Sweden|Norway|Austria|Romania|Slovakia|Hungary|Bulgaria|Ukraine|Latvia|Estonia|Denmark|Switzerland|Spain|Portugal|Belgium|Ireland|Greece|Croatia|Slovenia|Bosnia|Albania|Montenegro|Moldova|Luxembourg", RegexOption.IGNORE_CASE)
+        val candidates = mutableListOf<SpeedServer>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val name = o.optString("name"); var base = o.optString("server")
+            if (name.isBlank() || !region.containsMatchIn(name) || base.isBlank()) continue
+            if (base.startsWith("//")) base = "https:$base"
+            if (!base.startsWith("http")) continue
+            if (!base.endsWith("/")) base += "/"
+            val dl = o.optString("dlURL"); val ul = o.optString("ulURL"); val ping = o.optString("pingURL")
+            if (dl.isNotBlank() && ul.isNotBlank() && ping.isNotBlank()) candidates.add(SpeedServer(name, base, dl, ul, ping))
+        }
+        if (candidates.isEmpty()) throw Exception("Список серверов пуст")
+        log("Проверяем ${candidates.size} европейских серверов.")
+        val measured = candidates.take(30).mapNotNull { server ->
+            try {
+                val start = System.nanoTime()
+                val u = URL(URL(server.base), server.ping + "?wake=" + System.nanoTime())
+                val c = u.openConnection() as HttpURLConnection
+                c.connectTimeout = 3500; c.readTimeout = 3500; c.useCaches = false
+                val code = c.responseCode; c.disconnect()
+                if (code in 200..299) server to ((System.nanoTime() - start) / 1_000_000.0) else null
+            } catch (_: Exception) { null }
+        }.sortedBy { it.second }
+        val bestPair = measured.firstOrNull() ?: throw Exception("Нет доступных тестовых серверов")
+        val best = bestPair.first
+        log("Выбран сервер: ${best.name} (${String.format("%.1f", bestPair.second)} мс)")
+        sendSpeed("server", "ok", best.name)
+        val pings = mutableListOf<Double>()
+        repeat(8) {
+            val start = System.nanoTime()
+            val u = URL(URL(best.base), best.ping + "?wake=" + System.nanoTime())
+            val c = u.openConnection() as HttpURLConnection
+            c.connectTimeout = 5000; c.readTimeout = 5000; c.useCaches = false
+            val code = c.responseCode; c.disconnect()
+            if (code in 200..299) pings.add((System.nanoTime() - start) / 1_000_000.0)
+        }
+        if (pings.isEmpty()) throw Exception("Не удалось измерить ping")
+        val ping = pings.average()
+        val jitter = if (pings.size > 1) pings.zipWithNext { a, b -> kotlin.math.abs(a - b) }.average() else 0.0
+        sendSpeed("ping", String.format(java.util.Locale.US, "%.1f", ping))
+        sendSpeed("jitter", String.format(java.util.Locale.US, "%.1f", jitter))
+        log("Ping: ${String.format("%.1f", ping)} мс • Jitter: ${String.format("%.1f", jitter)} мс")
+        val dlUrl = URL(URL(best.base), best.dl + "?ckSize=4&wake=" + System.nanoTime())
+        val dlConn = dlUrl.openConnection() as HttpURLConnection
+        dlConn.connectTimeout = 10000; dlConn.readTimeout = 20000; dlConn.useCaches = false
+        val dlStart = System.nanoTime(); var downloaded = 0L
+        dlConn.inputStream.use { input -> val buffer = ByteArray(64 * 1024); while (true) { val n = input.read(buffer); if (n < 0) break; downloaded += n } }
+        dlConn.disconnect()
+        val dlSeconds = (System.nanoTime() - dlStart) / 1_000_000_000.0
+        if (downloaded == 0L || dlSeconds <= 0) throw Exception("Загрузка не состоялась")
+        val dlMbps = downloaded * 8.0 / dlSeconds / 1_000_000.0
+        sendSpeed("download", String.format(java.util.Locale.US, "%.2f", dlMbps))
+        log("Download: ${String.format("%.2f", dlMbps)} Мбит/с")
+        val upload = ByteArray(1024 * 1024); java.security.SecureRandom().nextBytes(upload)
+        val ulUrl = URL(URL(best.base), best.ul + "?wake=" + System.nanoTime())
+        val ulConn = ulUrl.openConnection() as HttpURLConnection
+        ulConn.requestMethod = "POST"; ulConn.doOutput = true; ulConn.connectTimeout = 10000; ulConn.readTimeout = 20000
+        ulConn.setRequestProperty("Content-Type", "application/octet-stream")
+        ulConn.setFixedLengthStreamingMode(upload.size)
+        val ulStart = System.nanoTime()
+        ulConn.outputStream.use { it.write(upload) }
+        val code = ulConn.responseCode
+        ulConn.disconnect()
+        val ulSeconds = (System.nanoTime() - ulStart) / 1_000_000_000.0
+        if (code !in 200..299 || ulSeconds <= 0) throw Exception("Сервер отклонил отправку ($code)")
+        val ulMbps = upload.size * 8.0 / ulSeconds / 1_000_000.0
+        sendSpeed("upload", String.format(java.util.Locale.US, "%.2f", ulMbps))
+        log("Upload: ${String.format("%.2f", ulMbps)} Мбит/с")
+        log("Тест скорости завершён.")
+    }
+
     private fun log(message: String) {
         val p = getSharedPreferences(PREF, 0); val arr = JSONArray(p.getString(KEY, "[]"))
         arr.put(JSONObject().put("time", System.currentTimeMillis()).put("message", message))
