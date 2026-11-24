@@ -87,9 +87,8 @@ class MonitorService : Service() {
                 }
                 updateNotification("Цикл $cycle • серверов ${selected.size}/3")
             } catch (e: Exception) { log("Ошибка цикла: ${e.message ?: "сеть"}") }
-            val spent = System.currentTimeMillis() - began
-            val wait = (interval * 1000L - spent).coerceAtLeast(0)
-            try { Thread.sleep(wait) } catch (_: InterruptedException) { }
+            // Interval is a pause after each completed cycle; long discovery must not trigger an immediate next cycle.
+            try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
         }
     }
     private fun loadServers(): List<Server> {
