@@ -18,9 +18,10 @@ class MonitorService : Service() {
         private const val CHANNEL = "internet_wake"
         private const val PREF = "wake_log"
         private const val KEY = "entries"
+        private const val KEY_HISTORY = "speed_history"
         fun snapshot(c: Context): JSONObject {
             val p = c.getSharedPreferences(PREF, 0)
-            return JSONObject().put("running", p.getBoolean("running", false)).put("entries", JSONArray(p.getString(KEY, "[]")))
+            return JSONObject().put("running", p.getBoolean("running", false)).put("entries", JSONArray(p.getString(KEY, "[]"))).put("history", JSONArray(p.getString(KEY_HISTORY, "[]")) )
         }
     }
     private val active = AtomicBoolean(false)
@@ -229,9 +230,24 @@ class MonitorService : Service() {
         val ulSeconds = (System.nanoTime() - ulStart) / 1_000_000_000.0
         if (code !in 200..299 || ulSeconds <= 0) throw Exception("Сервер отклонил отправку ($code)")
         val ulMbps = upload.size * 8.0 / ulSeconds / 1_000_000.0
+        saveSpeedResult(ping, jitter, dlMbps, ulMbps, best.name)
         sendSpeed("upload", String.format(java.util.Locale.US, "%.2f", ulMbps))
         log("Upload: ${String.format("%.2f", ulMbps)} Мбит/с")
         log("Тест скорости завершён.")
+    }
+
+    private fun saveSpeedResult(ping: Double, jitter: Double, download: Double, upload: Double, server: String) {
+        val prefs = getSharedPreferences(PREF, 0)
+        val history = JSONArray(prefs.getString(KEY_HISTORY, "[]"))
+        history.put(JSONObject()
+            .put("time", System.currentTimeMillis())
+            .put("ping", ping)
+            .put("jitter", jitter)
+            .put("download", download)
+            .put("upload", upload)
+            .put("server", server))
+        while (history.length() > 50) history.remove(0)
+        prefs.edit().putString(KEY_HISTORY, history.toString()).apply()
     }
 
     private fun log(message: String) {
