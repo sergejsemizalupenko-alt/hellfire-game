@@ -8,11 +8,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.internetwake.app.v22"
+        applicationId = "com.internetwake.app.v23"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "2.2"
+        versionCode = 2
+        versionName = "2.3"
     }
 
     compileOptions {
