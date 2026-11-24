@@ -37,6 +37,7 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
         }
         @JavascriptInterface fun stop() { startService(Intent(this@MainActivity, MonitorService::class.java).setAction(MonitorService.ACTION_STOP)) }
+        @JavascriptInterface fun speedTest() { val i = Intent(this@MainActivity, MonitorService::class.java).setAction(MonitorService.ACTION_SPEED); if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i) }
         @JavascriptInterface fun state(): String = MonitorService.snapshot(this@MainActivity).toString()
     }
 }
