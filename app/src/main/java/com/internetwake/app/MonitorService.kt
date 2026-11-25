@@ -30,6 +30,10 @@ class MonitorService : Service() {
   fun trafficSnapshot(c: Context): JSONObject {
    synchronized(trafficLock) {
     val p = c.getSharedPreferences(TRAFFIC_PREF, 0)
+    val today = dayKey()
+    if (p.getString("day_key", today) != today) {
+     p.edit().putString("day_key", today).putLong("today_bytes", 0L).apply()
+    }
     return JSONObject()
      .put("supported", p.getBoolean("supported", true))
      .put("totalBytes", p.getLong("total_bytes", 0L))
