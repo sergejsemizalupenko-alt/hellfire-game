@@ -19,7 +19,7 @@ class MonitorService : Service() {
         private const val KEY = "entries"
         fun snapshot(c: Context): JSONObject {
             val p = c.getSharedPreferences(PREF, 0)
-            return JSONObject().put("running", p.getBoolean("running", false)).put("entries", JSONArray(p.getString(KEY, "[]"))).put("history", JSONArray(p.getString(KEY_HISTORY, "[]")) )
+            return JSONObject().put("running", p.getBoolean("running", false)).put("entries", JSONArray(p.getString(KEY, "[]")))
         }
     }
     private val active = AtomicBoolean(false)
