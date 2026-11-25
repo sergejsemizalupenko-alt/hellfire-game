@@ -14,11 +14,9 @@ class MonitorService : Service() {
     companion object {
         const val ACTION_START = "wake.START"
         const val ACTION_STOP = "wake.STOP"
-        const val ACTION_SPEED = "wake.SPEED"
         private const val CHANNEL = "internet_wake"
         private const val PREF = "wake_log"
         private const val KEY = "entries"
-        private const val KEY_HISTORY = "speed_history"
         fun snapshot(c: Context): JSONObject {
             val p = c.getSharedPreferences(PREF, 0)
             return JSONObject().put("running", p.getBoolean("running", false)).put("entries", JSONArray(p.getString(KEY, "[]"))).put("history", JSONArray(p.getString(KEY_HISTORY, "[]")) )
@@ -26,7 +24,6 @@ class MonitorService : Service() {
     }
     private val active = AtomicBoolean(false)
     private var worker: Thread? = null
-    private var speedWorker: Thread? = null
     private var interval = 10
     private var lock: PowerManager.WakeLock? = null
     private val fallback = listOf(
@@ -51,14 +48,6 @@ class MonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopMonitor(); stopSelf(); return START_NOT_STICKY }
-            ACTION_SPEED -> {
-                if (speedWorker?.isAlive == true) return START_STICKY
-                startForeground(11, notification("Измерение скорости интернета"))
-                speedWorker = thread(name = "InternetWakeSpeedTest") {
-                    try { runSpeedTest() } catch (e: Exception) { sendSpeed("error", e.message ?: "Ошибка теста"); log("Ошибка теста скорости: ${e.message ?: "сеть"}") }
-                    finally { sendSpeed("done", "ok"); if (!active.get()) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }; speedWorker = null }
-                }
-            }
             ACTION_START -> {
                 interval = intent.getIntExtra("seconds", 10).coerceIn(5, 3600)
                 startForeground(11, notification("Мониторинг запущен"))
@@ -66,32 +55,11 @@ class MonitorService : Service() {
                     lock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "InternetWake:Monitor").also { it.acquire() }
                     log("Мониторинг запущен. Интервал: $interval сек.")
                     worker = thread(name = "InternetWakeWorker") { loop() }
-                    startAutomaticSpeedTests()
                 }
             }
         }
         return START_STICKY
     }
-    private fun startAutomaticSpeedTests() {
-        if (speedWorker?.isAlive == true) return
-        speedWorker = thread(name = "InternetWakeAutoSpeedTest") {
-            while (active.get()) {
-                try {
-                    runSpeedTest()
-                } catch (e: Exception) {
-                    sendSpeed("error", e.message ?: "Ошибка теста")
-                    log("Ошибка автоматического теста скорости: ${e.message ?: "сеть"}")
-                } finally {
-                    sendSpeed("done", "ok")
-                }
-                if (active.get()) {
-                    try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
-                }
-            }
-            speedWorker = null
-        }
-    }
-
     private fun loop() {
         var selected: List<Pair<Server, Long>> = emptyList()
         var lastDiscovery = 0L
@@ -103,7 +71,7 @@ class MonitorService : Service() {
                     log("Загружаем список европейских серверов.")
                     val candidates = loadServers()
                     log("Серверов для проверки: ${candidates.size}")
-                    selected = candidates.mapNotNull { s -> probe(s)?.let { s to it } }.sortedBy { it.second }.take(3)
+                    selected = candidates.mapNotNull { s -> probe(s)?.let { s to it } }.sortedBy { it.second }.take(5)
                     lastDiscovery = began
                     selected.forEachIndexed { i, p -> log("${i + 1}. ${p.first.name} — ${p.second} мс") }
                 }
@@ -115,10 +83,10 @@ class MonitorService : Service() {
                         probe(Server("Google", "https://www.google.com", "generate_204")) != null
                     log(if (ok) "Цикл №$cycle: сеть доступна (резерв Google)." else "Цикл №$cycle: нет ответа от серверов.")
                 } else {
-                    log("Цикл №$cycle: активных серверов ${selected.size}/3.")
+                    log("Цикл №$cycle: активных серверов ${selected.size}/5.")
                     selected.forEach { log("${it.first.name}: ${it.second} мс") }
                 }
-                updateNotification("Цикл $cycle • серверов ${selected.size}/3")
+                updateNotification("Цикл $cycle • серверов ${selected.size}/5")
             } catch (e: Exception) { log("Ошибка цикла: ${e.message ?: "сеть"}") }
             // Interval is a pause after each completed cycle; long discovery must not trigger an immediate next cycle.
             try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
@@ -153,7 +121,7 @@ class MonitorService : Service() {
         } catch (_: Exception) { null } finally { conn?.disconnect() }
     }
 
-    private fun sendSpeed(stage: String, value: String, name: String = "") {
+undefined
         val payload = JSONObject().put("type", "speed").put("stage", stage).put("value", value).put("name", name)
         sendBroadcast(Intent("com.internetwake.EVENT").setPackage(packageName).putExtra("payload", payload.toString()))
     }
@@ -259,7 +227,7 @@ class MonitorService : Service() {
         sendBroadcast(Intent("com.internetwake.EVENT").setPackage(packageName).putExtra("payload", payload.toString()))
     }
     private fun stopMonitor() {
-        active.set(false); worker?.interrupt(); worker = null; speedWorker?.interrupt()
+        active.set(false); worker?.interrupt(); worker = null
         try { lock?.let { if (it.isHeld) it.release() } } catch (_: Exception) { }
         lock = null
         getSharedPreferences(PREF, 0).edit().putBoolean("running", false).apply()
