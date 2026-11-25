@@ -65,39 +65,37 @@ class MonitorService : Service() {
   // Keep the same five chosen servers in the monitoring set. A failed server
   // must NOT be removed: it is probed again on every cycle and can recover.
   var selected: List<Server> = emptyList()
+  var candidatePool: List<Server> = emptyList()
   var lastDiscovery = 0L
   var cycle = 0
   while (active.get()) {
    val cycleBegan = SystemClock.elapsedRealtime()
    val began = System.currentTimeMillis()
    try {
-    if (selected.isEmpty() || began - lastDiscovery > 30 * 60 * 1000L) {
-     log("Загружаем список европейских серверов.")
+    if (candidatePool.isEmpty() || began - lastDiscovery > 5 * 60 * 1000L) {
+     log("Обновляем список серверов Европы.")
      val candidates = loadServers()
-     // If the live directory temporarily returns fewer than five entries,
-     // supplement it with the built-in European fallback pool.
-     val pool = (candidates + fallback).distinct()
-     log("Серверов в пуле: ${pool.size}")
-     val ranked = probeAll(candidates.take(20)).sortedBy { it.second }
-     // Keep five stable candidates, including temporarily unavailable ones.
-     // Failed candidates remain in the set and are retried on every cycle.
-     selected = (ranked.map { it.first } + pool.filterNot { candidate ->
-      ranked.any { it.first == candidate }
-     }).distinct().take(5)
+     candidatePool = (candidates + fallback).distinct().take(60)
+     log("Найдено кандидатов: ${candidatePool.size}. Проверяем доступность.")
      lastDiscovery = began
-     selected.forEachIndexed { i, s -> log("${i + 1}. ${s.name}") }
     }
     cycle++
-    // Probe ALL five selected servers every cycle, including those that failed
-    // previously. This allows the availability counter to move in both directions.
-    val results = probeAll(selected).sortedBy { it.second }
-    log("Цикл №$cycle: активных серверов ${results.size}/5.")
-    if (results.isEmpty()) {
-     val ok = probe(Server("Google connectivity", "https://connectivitycheck.gstatic.com", "generate_204")) != null ||
-      probe(Server("Google", "https://www.google.com", "generate_204")) != null
-     log(if (ok) "Сеть доступна (резерв Google)." else "Нет ответа от серверов.")
+    // First retry the current five. If any are down, immediately search the
+    // wider cached pool for replacements instead of waiting 30 minutes.
+    var results = probeAll(selected).sortedBy { it.second }
+    if (selected.size < 5 || results.size < 5) {
+     val excluded = results.map { it.first }.toSet()
+     val alternatives = candidatePool.filterNot { it in excluded }
+     val discovered = probeAll(alternatives).sortedBy { it.second }
+     results = (results + discovered).distinctBy { it.first }.sortedBy { it.second }
+    }
+    val healthy = results.take(5)
+    selected = healthy.map { it.first }
+    log("Цикл №$cycle: активных серверов ${healthy.size}/5.")
+    if (healthy.isEmpty()) {
+     log("Серверы не отвечают. Мониторинг продолжается, повторная проверка через ${interval} сек.")
     } else {
-     results.forEach { log("${it.first.name}: ${it.second} мс") }
+     healthy.forEach { log("${it.first.name}: ${it.second} мс") }
     }
     updateNotification("Цикл $cycle • серверов ${results.size}/5")
    } catch (e: Exception) { log("Ошибка цикла: ${e.message ?: "сеть"}") }
@@ -107,7 +105,7 @@ class MonitorService : Service() {
  }
  private fun probeAll(servers: List<Server>): List<Pair<Server, Long>> {
   if (servers.isEmpty()) return emptyList()
-  val executor = Executors.newFixedThreadPool(minOf(servers.size, 10))
+  val executor = Executors.newFixedThreadPool(minOf(servers.size, 20))
   return try {
    val tasks = servers.map { server -> executor.submit(Callable { probe(server)?.let { server to it } }) }
    tasks.mapNotNull { try { it.get() } catch (_: Exception) { null } }
