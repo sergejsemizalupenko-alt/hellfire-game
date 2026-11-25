@@ -98,6 +98,48 @@ class MonitorService : Service() {
   }
   return START_STICKY
  }
+ private fun beginTrafficSession() {
+  synchronized(trafficLock) {
+   val p = getSharedPreferences(TRAFFIC_PREF, 0)
+   val rx = TrafficStats.getUidRxBytes(android.os.Process.myUid())
+   val tx = TrafficStats.getUidTxBytes(android.os.Process.myUid())
+   val today = dayKey()
+   val todayBytes = if (p.getString("day_key", today) == today) p.getLong("today_bytes", 0L) else 0L
+   p.edit().putLong("session_bytes", 0L).putLong("today_bytes", todayBytes)
+    .putString("day_key", today).putLong("last_rx", rx).putLong("last_tx", tx)
+    .putBoolean("baseline", rx >= 0L && tx >= 0L).putBoolean("supported", rx >= 0L && tx >= 0L).apply()
+  }
+ }
+ private fun sampleTraffic() {
+  synchronized(trafficLock) {
+   val p = getSharedPreferences(TRAFFIC_PREF, 0)
+   val rx = TrafficStats.getUidRxBytes(android.os.Process.myUid())
+   val tx = TrafficStats.getUidTxBytes(android.os.Process.myUid())
+   if (rx < 0L || tx < 0L) {
+    p.edit().putBoolean("supported", false).apply()
+    return
+   }
+   if (!p.getBoolean("baseline", false)) {
+    p.edit().putLong("last_rx", rx).putLong("last_tx", tx)
+     .putBoolean("baseline", true).putBoolean("supported", true).apply()
+    return
+   }
+   val previousRx = p.getLong("last_rx", rx)
+   val previousTx = p.getLong("last_tx", tx)
+   // UID counters can reset after a device reboot; treat the new counter as
+   // the post-reboot delta instead of producing a negative value.
+   val delta = (if (rx >= previousRx) rx - previousRx else rx) +
+    (if (tx >= previousTx) tx - previousTx else tx)
+   val today = dayKey()
+   val todayBytes = if (p.getString("day_key", today) == today) p.getLong("today_bytes", 0L) else 0L
+   p.edit()
+    .putLong("total_bytes", p.getLong("total_bytes", 0L) + delta)
+    .putLong("today_bytes", todayBytes + delta)
+    .putLong("session_bytes", p.getLong("session_bytes", 0L) + delta)
+    .putString("day_key", today).putLong("last_rx", rx).putLong("last_tx", tx)
+    .putBoolean("supported", true).apply()
+  }
+ }
  private fun loop() {
   // The selected servers stay under continuous cycle-by-cycle monitoring.
   // Recovery discovery runs on a separate worker and never blocks this loop.
