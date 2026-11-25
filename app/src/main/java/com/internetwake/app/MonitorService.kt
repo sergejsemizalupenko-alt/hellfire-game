@@ -93,7 +93,7 @@ class MonitorService : Service() {
     }
 
     private fun loop() {
-        var selected: List<Pair<Server, Long>> = emptyList()
+        var selected: List<Server> = emptyList()
         var lastDiscovery = 0L
         var cycle = 0
         while (active.get()) {
@@ -103,22 +103,30 @@ class MonitorService : Service() {
                     log("Загружаем список европейских серверов.")
                     val candidates = loadServers()
                     log("Серверов для проверки: ${candidates.size}")
-                    selected = candidates.mapNotNull { s -> probe(s)?.let { s to it } }.sortedBy { it.second }.take(3)
+                    val ranked = candidates.mapNotNull { s -> probe(s)?.let { s to it } }.sortedBy { it.second }
+                    // Keep three candidates even when some fail during discovery.
+                    // Every candidate is probed again on every monitoring cycle.
+                    selected = (ranked.map { it.first } + candidates.filterNot { candidate ->
+                        ranked.any { it.first == candidate }
+                    }).distinct().take(3)
                     lastDiscovery = began
-                    selected.forEachIndexed { i, p -> log("${i + 1}. ${p.first.name} — ${p.second} мс") }
+                    selected.forEachIndexed { i, s ->
+                        val latency = ranked.firstOrNull { it.first == s }?.second
+                        log(if (latency != null) "${i + 1}. ${s.name} — ${latency} мс" else "${i + 1}. ${s.name} — ожидает проверки")
+                    }
                 }
                 cycle++
-                val checked = selected.mapNotNull { p -> probe(p.first)?.let { p.first to it } }
-                selected = checked.sortedBy { it.second }
-                if (selected.isEmpty()) {
+                val checked = selected.mapNotNull { s -> probe(s)?.let { s to it } }.sortedBy { it.second }
+                // Do not remove failed servers from selected: they may recover next cycle.
+                log("Цикл №$cycle: активных серверов ${checked.size}/3.")
+                if (checked.isEmpty()) {
                     val ok = probe(Server("Google connectivity", "https://connectivitycheck.gstatic.com", "generate_204")) != null ||
                         probe(Server("Google", "https://www.google.com", "generate_204")) != null
-                    log(if (ok) "Цикл №$cycle: сеть доступна (резерв Google)." else "Цикл №$cycle: нет ответа от серверов.")
+                    log(if (ok) "Сеть доступна (резерв Google)." else "Нет ответа от серверов.")
                 } else {
-                    log("Цикл №$cycle: активных серверов ${selected.size}/3.")
-                    selected.forEach { log("${it.first.name}: ${it.second} мс") }
+                    checked.forEach { log("${it.first.name}: ${it.second} мс") }
                 }
-                updateNotification("Цикл $cycle • серверов ${selected.size}/3")
+                updateNotification("Цикл $cycle • серверов ${checked.size}/3")
             } catch (e: Exception) { log("Ошибка цикла: ${e.message ?: "сеть"}") }
             // Interval is a pause after each completed cycle; long discovery must not trigger an immediate next cycle.
             try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
