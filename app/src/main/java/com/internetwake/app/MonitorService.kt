@@ -55,6 +55,7 @@ class MonitorService : Service() {
  private val active = AtomicBoolean(false)
  private val discoveryRunning = AtomicBoolean(false)
  private val discoveryResults = ConcurrentLinkedQueue<Pair<Server, Long>>()
+ @Volatile private var discoveryWorker: Thread? = null
  private val trafficHandler = Handler(Looper.getMainLooper())
  private val trafficTicker = object : Runnable {
   override fun run() {
@@ -176,7 +177,14 @@ class MonitorService : Service() {
      .distinctBy { it.first }
      .sortedBy { it.second }
      .take(5)
-    selected = healthy.map { it.first }
+    // Keep failed entries in the five-server monitoring set until a verified
+    // replacement is found. This lets a recovered old server be detected too.
+    val currentHealthy = currentResults.map { it.first }.toSet()
+    val failedSelected = selected.filterNot { it in currentHealthy }
+    val newServers = healthy.map { it.first }.filterNot { it in currentHealthy }
+    val replacements = minOf(newServers.size, failedSelected.size)
+    selected = (currentResults.map { it.first } + newServers +
+     failedSelected.drop(replacements)).distinct().take(5)
 
     if (healthy.size <= 2) recoveryMode = true
     if (healthy.size == 5) recoveryMode = false
@@ -193,7 +201,7 @@ class MonitorService : Service() {
     // the remaining selected servers on the normal interval.
     if (recoveryMode && healthy.size < 5 &&
         !discoveryRunning.get() && SystemClock.elapsedRealtime() - lastSearchStart >= 5000L) {
-     startBackgroundDiscovery(candidatePool, selected)
+     startBackgroundDiscovery(candidatePool, selected, healthy.size)
      lastSearchStart = SystemClock.elapsedRealtime()
     }
     updateNotification("Цикл $cycle • серверов ${healthy.size}/5")
@@ -202,16 +210,16 @@ class MonitorService : Service() {
    if (remaining > 0) try { Thread.sleep(remaining) } catch (_: InterruptedException) { }
   }
  }
- private fun startBackgroundDiscovery(pool: List<Server>, current: List<Server>) {
+ private fun startBackgroundDiscovery(pool: List<Server>, current: List<Server>, activeCount: Int) {
   if (!discoveryRunning.compareAndSet(false, true)) return
   val excluded = current.toSet()
-  thread(name = "InternetWakeDiscovery") {
+  discoveryWorker = thread(name = "InternetWakeDiscovery") {
    try {
     val alternatives = pool.filterNot { it in excluded }
     if (alternatives.isEmpty()) return@thread
-    log("Осталось ${current.size}/5 серверов. Ищем замену в фоне; мониторинг продолжается.")
+    log("Осталось ${activeCount}/5 серверов. Ищем замену в фоне; мониторинг продолжается.")
     val found = probeAll(alternatives).sortedBy { it.second }
-    val slots = (5 - current.size).coerceAtLeast(0)
+    val slots = (5 - activeCount).coerceAtLeast(0)
     val additions = found.take(slots)
     additions.forEach { discoveryResults.offer(it) }
     log("Фоновый поиск завершён: найдено новых серверов ${additions.size}.")
@@ -227,7 +235,17 @@ class MonitorService : Service() {
   val executor = Executors.newFixedThreadPool(minOf(servers.size, 20))
   return try {
    val tasks = servers.map { server -> executor.submit(Callable { probe(server)?.let { server to it } }) }
-   tasks.mapNotNull { try { it.get() } catch (_: Exception) { null } }
+   val results = mutableListOf<Pair<Server, Long>>()
+   for (task in tasks) {
+    if (Thread.currentThread().isInterrupted) break
+    try {
+     task.get()?.let { results.add(it) }
+    } catch (_: InterruptedException) {
+     Thread.currentThread().interrupt()
+     break
+    } catch (_: Exception) { }
+   }
+   results
   } finally {
    executor.shutdownNow()
   }
@@ -277,6 +295,8 @@ class MonitorService : Service() {
   trafficHandler.removeCallbacks(trafficTicker)
   worker?.interrupt(); worker = null
   discoveryResults.clear()
+  discoveryWorker?.interrupt()
+  discoveryWorker = null
   try { lock?.let { if (it.isHeld) it.release() } } catch (_: Exception) { }
   lock = null
   getSharedPreferences(PREF, 0).edit().putBoolean("running", false).putLong("started_at", 0L).apply()
