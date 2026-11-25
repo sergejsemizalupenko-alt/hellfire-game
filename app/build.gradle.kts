@@ -11,8 +11,8 @@ android {
         applicationId = "com.internetwake.app.v24test"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.4.2"
+        versionCode = 7
+        versionName = "2.4.3"
     }
 
     compileOptions {
