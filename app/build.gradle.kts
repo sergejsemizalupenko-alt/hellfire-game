@@ -8,26 +8,12 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.internetwake.app.lite"
+        // Separate package so Lite 2.5.1 and TEST can remain installed.
+        applicationId = "com.internetwake.app.lite.v252"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
+        versionCode = 1
         versionName = "2.5.2-lite"
-    }
-
-    signingConfigs {
-        create("stable") {
-            storeFile = file("release.keystore")
-            storePassword = System.getenv("IW_KEYSTORE_PASSWORD")
-            keyAlias = System.getenv("IW_KEY_ALIAS")
-            keyPassword = System.getenv("IW_KEY_PASSWORD")
-        }
-    }
-
-    buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("stable")
-        }
     }
 
     compileOptions {
