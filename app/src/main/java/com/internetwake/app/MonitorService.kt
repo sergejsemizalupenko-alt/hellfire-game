@@ -7,6 +7,8 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
+import java.util.concurrent.Callable
 import kotlin.concurrent.thread
 
 class MonitorService : Service() {
@@ -18,7 +20,7 @@ class MonitorService : Service() {
   private const val KEY = "entries"
   fun snapshot(c: Context): JSONObject {
    val p = c.getSharedPreferences(PREF, 0)
-   return JSONObject().put("running", p.getBoolean("running", false)).put("entries", JSONArray(p.getString(KEY, "[]")))
+   return JSONObject().put("running", p.getBoolean("running", false)).put("startedAt", p.getLong("started_at", 0L)).put("entries", JSONArray(p.getString(KEY, "[]")))
   }
  }
  private val active = AtomicBoolean(false)
@@ -48,6 +50,7 @@ class MonitorService : Service() {
    ACTION_STOP -> { stopMonitor(); stopSelf(); return START_NOT_STICKY }
    ACTION_START -> {
     interval = intent.getIntExtra("seconds", 10).coerceIn(5, 3600)
+    getSharedPreferences(PREF, 0).edit().putLong("started_at", System.currentTimeMillis()).apply()
     startForeground(11, notification("Мониторинг запущен"))
     if (active.compareAndSet(false, true)) {
      lock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "InternetWake:Monitor").also { it.acquire() }
@@ -65,6 +68,7 @@ class MonitorService : Service() {
   var lastDiscovery = 0L
   var cycle = 0
   while (active.get()) {
+   val cycleBegan = SystemClock.elapsedRealtime()
    val began = System.currentTimeMillis()
    try {
     if (selected.isEmpty() || began - lastDiscovery > 30 * 60 * 1000L) {
@@ -74,8 +78,7 @@ class MonitorService : Service() {
      // supplement it with the built-in European fallback pool.
      val pool = (candidates + fallback).distinct()
      log("Серверов в пуле: ${pool.size}")
-     val ranked = candidates.mapNotNull { s -> probe(s)?.let { s to it } }
-      .sortedBy { it.second }
+     val ranked = probeAll(candidates.take(20)).sortedBy { it.second }
      // Keep five stable candidates, including temporarily unavailable ones.
      // Failed candidates remain in the set and are retried on every cycle.
      selected = (ranked.map { it.first } + pool.filterNot { candidate ->
@@ -87,8 +90,7 @@ class MonitorService : Service() {
     cycle++
     // Probe ALL five selected servers every cycle, including those that failed
     // previously. This allows the availability counter to move in both directions.
-    val results = selected.mapNotNull { s -> probe(s)?.let { s to it } }
-     .sortedBy { it.second }
+    val results = probeAll(selected).sortedBy { it.second }
     log("Цикл №$cycle: активных серверов ${results.size}/5.")
     if (results.isEmpty()) {
      val ok = probe(Server("Google connectivity", "https://connectivitycheck.gstatic.com", "generate_204")) != null ||
@@ -99,7 +101,18 @@ class MonitorService : Service() {
     }
     updateNotification("Цикл $cycle • серверов ${results.size}/5")
    } catch (e: Exception) { log("Ошибка цикла: ${e.message ?: "сеть"}") }
-   try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
+   val remaining = interval * 1000L - (SystemClock.elapsedRealtime() - cycleBegan)
+   if (remaining > 0) try { Thread.sleep(remaining) } catch (_: InterruptedException) { }
+  }
+ }
+ private fun probeAll(servers: List<Server>): List<Pair<Server, Long>> {
+  if (servers.isEmpty()) return emptyList()
+  val executor = Executors.newFixedThreadPool(minOf(servers.size, 10))
+  return try {
+   val tasks = servers.map { server -> executor.submit(Callable { probe(server)?.let { server to it } }) }
+   tasks.mapNotNull { try { it.get() } catch (_: Exception) { null } }
+  } finally {
+   executor.shutdownNow()
   }
  }
  private fun loadServers(): List<Server> {
@@ -145,7 +158,7 @@ class MonitorService : Service() {
   active.set(false); worker?.interrupt(); worker = null
   try { lock?.let { if (it.isHeld) it.release() } } catch (_: Exception) { }
   lock = null
-  getSharedPreferences(PREF, 0).edit().putBoolean("running", false).apply()
+  getSharedPreferences(PREF, 0).edit().putBoolean("running", false).putLong("started_at", 0L).apply()
   log("Мониторинг остановлен.")
   stopForeground(STOP_FOREGROUND_REMOVE)
  }
