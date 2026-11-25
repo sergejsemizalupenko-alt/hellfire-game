@@ -70,12 +70,15 @@ class MonitorService : Service() {
     if (selected.isEmpty() || began - lastDiscovery > 30 * 60 * 1000L) {
      log("Загружаем список европейских серверов.")
      val candidates = loadServers()
-     log("Серверов для проверки: ${candidates.size}")
+     // If the live directory temporarily returns fewer than five entries,
+     // supplement it with the built-in European fallback pool.
+     val pool = (candidates + fallback).distinct()
+     log("Серверов в пуле: ${pool.size}")
      val ranked = candidates.mapNotNull { s -> probe(s)?.let { s to it } }
       .sortedBy { it.second }
-     // Keep exactly five candidates, including temporarily unavailable ones.
+     // Keep five stable candidates, including temporarily unavailable ones.
      // Failed candidates remain in the set and are retried on every cycle.
-     selected = (ranked.map { it.first } + candidates.filterNot { candidate ->
+     selected = (ranked.map { it.first } + pool.filterNot { candidate ->
       ranked.any { it.first == candidate }
      }).distinct().take(5)
      lastDiscovery = began
@@ -123,7 +126,10 @@ class MonitorService : Service() {
    conn = URL(url).openConnection() as HttpURLConnection
    conn.requestMethod = "GET"; conn.connectTimeout = 4500; conn.readTimeout = 4500; conn.useCaches = false
    conn.setRequestProperty("Cache-Control", "no-cache")
-   conn.responseCode
+   val code = conn.responseCode
+   // A server is available only when its ping endpoint returns a successful
+   // HTTP response; transport-level HTTP errors must not count as healthy.
+   if (code !in 200..399) return null
    ((System.nanoTime() - start) / 1_000_000).coerceAtLeast(1)
   } catch (_: Exception) { null } finally { conn?.disconnect() }
  }
