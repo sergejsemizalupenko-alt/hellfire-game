@@ -1,8 +1,8 @@
-run-name: INTERNET WAKE 2.4 speed test APK
-name: Build INTERNET WAKE APK
+run-name: INTERNET WAKE Lite network-only APK
+name: Build INTERNET WAKE Lite APK
 on:
   push:
-    branches: [internet-wake-android, internet-wake-speedtest, internet-wake-speedtest-2.3, internet-wake-speedtest-2.4]
+    branches: [internet-wake-android, internet-wake-speedtest, internet-wake-speedtest-2.3, internet-wake-speedtest-2.4, internet-wake-lite]
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +26,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: internet-wake-2.4-debug-apk
+          name: internet-wake-lite-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
