@@ -59,7 +59,9 @@ class MonitorService : Service() {
   return START_STICKY
  }
  private fun loop() {
-  var selected: List<Pair<Server, Long>> = emptyList()
+  // Keep the same five chosen servers in the monitoring set. A failed server
+  // must NOT be removed: it is probed again on every cycle and can recover.
+  var selected: List<Server> = emptyList()
   var lastDiscovery = 0L
   var cycle = 0
   while (active.get()) {
@@ -69,21 +71,25 @@ class MonitorService : Service() {
      log("Загружаем список европейских серверов.")
      val candidates = loadServers()
      log("Серверов для проверки: ${candidates.size}")
-     selected = candidates.mapNotNull { s -> probe(s)?.let { s to it } }.sortedBy { it.second }.take(5)
+     selected = candidates.mapNotNull { s -> probe(s)?.let { s to it } }
+      .sortedBy { it.second }.take(5).map { it.first }
      lastDiscovery = began
-     selected.forEachIndexed { i, p -> log("${i + 1}. ${p.first.name} — ${p.second} мс") }
+     selected.forEachIndexed { i, s -> log("${i + 1}. ${s.name}") }
     }
     cycle++
-    selected = selected.mapNotNull { p -> probe(p.first)?.let { p.first to it } }.sortedBy { it.second }
-    if (selected.isEmpty()) {
+    // Probe ALL five selected servers every cycle, including those that failed
+    // previously. This allows the availability counter to move in both directions.
+    val results = selected.mapNotNull { s -> probe(s)?.let { s to it } }
+     .sortedBy { it.second }
+    if (results.isEmpty()) {
      val ok = probe(Server("Google connectivity", "https://connectivitycheck.gstatic.com", "generate_204")) != null ||
       probe(Server("Google", "https://www.google.com", "generate_204")) != null
      log(if (ok) "Цикл №$cycle: сеть доступна (резерв Google)." else "Цикл №$cycle: нет ответа от серверов.")
     } else {
-     log("Цикл №$cycle: активных серверов ${selected.size}/5.")
-     selected.forEach { log("${it.first.name}: ${it.second} мс") }
+     log("Цикл №$cycle: активных серверов ${results.size}/5.")
+     results.forEach { log("${it.first.name}: ${it.second} мс") }
     }
-    updateNotification("Цикл $cycle • серверов ${selected.size}/5")
+    updateNotification("Цикл $cycle • серверов ${results.size}/5")
    } catch (e: Exception) { log("Ошибка цикла: ${e.message ?: "сеть"}") }
    try { Thread.sleep(interval * 1000L) } catch (_: InterruptedException) { }
   }
