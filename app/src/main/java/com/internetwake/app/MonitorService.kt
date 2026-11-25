@@ -186,7 +186,7 @@ class MonitorService : Service() {
     selected = (currentResults.map { it.first } + newServers +
      failedSelected.drop(replacements)).distinct().take(5)
 
-    if (healthy.size <= 2) recoveryMode = true
+    if (selected.size < 5 || healthy.size <= 2) recoveryMode = true
     if (healthy.size == 5) recoveryMode = false
 
     log("Цикл №$cycle: активных серверов ${healthy.size}/5.")
