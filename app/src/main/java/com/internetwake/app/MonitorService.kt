@@ -71,8 +71,13 @@ class MonitorService : Service() {
      log("Загружаем список европейских серверов.")
      val candidates = loadServers()
      log("Серверов для проверки: ${candidates.size}")
-     selected = candidates.mapNotNull { s -> probe(s)?.let { s to it } }
-      .sortedBy { it.second }.take(5).map { it.first }
+     val ranked = candidates.mapNotNull { s -> probe(s)?.let { s to it } }
+      .sortedBy { it.second }
+     // Keep exactly five candidates, including temporarily unavailable ones.
+     // Failed candidates remain in the set and are retried on every cycle.
+     selected = (ranked.map { it.first } + candidates.filterNot { candidate ->
+      ranked.any { it.first == candidate }
+     }).distinct().take(5)
      lastDiscovery = began
      selected.forEachIndexed { i, s -> log("${i + 1}. ${s.name}") }
     }
@@ -81,12 +86,12 @@ class MonitorService : Service() {
     // previously. This allows the availability counter to move in both directions.
     val results = selected.mapNotNull { s -> probe(s)?.let { s to it } }
      .sortedBy { it.second }
+    log("Цикл №$cycle: активных серверов ${results.size}/5.")
     if (results.isEmpty()) {
      val ok = probe(Server("Google connectivity", "https://connectivitycheck.gstatic.com", "generate_204")) != null ||
       probe(Server("Google", "https://www.google.com", "generate_204")) != null
-     log(if (ok) "Цикл №$cycle: сеть доступна (резерв Google)." else "Цикл №$cycle: нет ответа от серверов.")
+     log(if (ok) "Сеть доступна (резерв Google)." else "Нет ответа от серверов.")
     } else {
-     log("Цикл №$cycle: активных серверов ${results.size}/5.")
      results.forEach { log("${it.first.name}: ${it.second} мс") }
     }
     updateNotification("Цикл $cycle • серверов ${results.size}/5")
