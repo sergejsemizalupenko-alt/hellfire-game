@@ -1,8 +1,8 @@
-run-name: INTERNET WAKE Lite network-only APK
-name: Build INTERNET WAKE Lite APK
+run-name: INTERNET WAKE Lite 2.5.3 APK
+name: Build INTERNET WAKE Lite 2.5.3 APK
 on:
   push:
-    branches: [internet-wake-android, internet-wake-speedtest, internet-wake-speedtest-2.3, internet-wake-speedtest-2.4, internet-wake-lite]
+    branches: [internet-wake-lite]
   workflow_dispatch:
 permissions:
   contents: read
