@@ -9,11 +9,11 @@ android {
 
     defaultConfig {
         // Separate package so Lite 2.5.1 and TEST can remain installed.
-        applicationId = "com.internetwake.app.lite.v253"
+        applicationId = "com.internetwake.app.lite.v254"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.5.3-lite"
+        versionCode = 1
+        versionName = "2.5.3-lite-side"
     }
 
     signingConfigs {
