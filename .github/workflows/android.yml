@@ -4,6 +4,9 @@ on:
   push:
     branches: [internet-wake-lite]
   workflow_dispatch:
+concurrency:
+  group: internet-wake-lite-android-build
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -26,20 +29,26 @@ jobs:
         run: |
           mkdir -p ~/.android
           if [ ! -f ~/.android/debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore ~/.android/debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US" \
+            keytool -genkeypair -v \\
+              -keystore ~/.android/debug.keystore \\
+              -storepass android \\
+              -alias androiddebugkey \\
+              -keypass android \\
+              -dname "CN=Android Debug,O=Android,C=US" \\
               -keyalg RSA -keysize 2048 -validity 10000
           fi
+      - name: Verify persistent signing certificate
+        run: keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | grep -E 'SHA256:|SHA-256:'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
+      - name: Verify APK signature
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
