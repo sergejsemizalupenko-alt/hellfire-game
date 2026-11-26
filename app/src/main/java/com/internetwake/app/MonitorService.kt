@@ -19,6 +19,14 @@ class MonitorService : Service() {
   private const val CHANNEL = "internet_wake"
   private const val PREF = "wake_log"
   private const val KEY = "entries"
+
+  fun snapshot(context: Context): JSONObject {
+   val prefs = context.getSharedPreferences(PREF, 0)
+   return JSONObject()
+    .put("running", prefs.getBoolean("running", false))
+    .put("startedAt", prefs.getLong("started_at", 0L))
+    .put("entries", JSONArray(prefs.getString(KEY, "[]")))
+  }
  }
 
  private val active = AtomicBoolean(false)
