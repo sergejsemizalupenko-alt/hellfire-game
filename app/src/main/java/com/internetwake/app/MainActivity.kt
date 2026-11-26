@@ -38,7 +38,5 @@ class MainActivity : Activity() {
         }
         @JavascriptInterface fun stop() { startService(Intent(this@MainActivity, MonitorService::class.java).setAction(MonitorService.ACTION_STOP)) }
         @JavascriptInterface fun state(): String = MonitorService.snapshot(this@MainActivity).toString()
-        @JavascriptInterface fun traffic(): String = MonitorService.trafficSnapshot(this@MainActivity).toString()
-        @JavascriptInterface fun resetTraffic() { MonitorService.resetTraffic(this@MainActivity) }
     }
 }
