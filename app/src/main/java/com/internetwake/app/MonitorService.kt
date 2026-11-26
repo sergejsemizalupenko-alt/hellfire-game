@@ -2,7 +2,6 @@ package com.internetwake.app
 import android.app.*
 import android.content.*
 import android.os.*
-import android.net.TrafficStats
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -20,49 +19,12 @@ class MonitorService : Service() {
   private const val CHANNEL = "internet_wake"
   private const val PREF = "wake_log"
   private const val KEY = "entries"
-  private const val TRAFFIC_PREF = "wake_traffic"
-  private val trafficLock = Any()
-  private fun dayKey(): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-  fun snapshot(c: Context): JSONObject {
-   val p = c.getSharedPreferences(PREF, 0)
-   return JSONObject().put("running", p.getBoolean("running", false)).put("startedAt", p.getLong("started_at", 0L)).put("entries", JSONArray(p.getString(KEY, "[]")))
-  }
-  fun trafficSnapshot(c: Context): JSONObject {
-   synchronized(trafficLock) {
-    val p = c.getSharedPreferences(TRAFFIC_PREF, 0)
-    val today = dayKey()
-    if (p.getString("day_key", today) != today) {
-     p.edit().putString("day_key", today).putLong("today_bytes", 0L).apply()
-    }
-    return JSONObject()
-     .put("supported", p.getBoolean("supported", true))
-     .put("totalBytes", p.getLong("total_bytes", 0L))
-     .put("todayBytes", p.getLong("today_bytes", 0L))
-     .put("sessionBytes", p.getLong("session_bytes", 0L))
-   }
-  }
-  fun resetTraffic(c: Context) {
-   synchronized(trafficLock) {
-    val rx = TrafficStats.getUidRxBytes(android.os.Process.myUid())
-    val tx = TrafficStats.getUidTxBytes(android.os.Process.myUid())
-    c.getSharedPreferences(TRAFFIC_PREF, 0).edit()
-     .putLong("total_bytes", 0L).putLong("today_bytes", 0L).putLong("session_bytes", 0L)
-     .putString("day_key", dayKey()).putLong("last_rx", rx).putLong("last_tx", tx)
-     .putBoolean("baseline", rx >= 0L && tx >= 0L).putBoolean("supported", rx >= 0L && tx >= 0L).apply()
-   }
-  }
  }
+
  private val active = AtomicBoolean(false)
  private val discoveryRunning = AtomicBoolean(false)
  private val discoveryResults = ConcurrentLinkedQueue<Pair<Server, Long>>()
  @Volatile private var discoveryWorker: Thread? = null
- private val trafficHandler = Handler(Looper.getMainLooper())
- private val trafficTicker = object : Runnable {
-  override fun run() {
-   sampleTraffic()
-   if (active.get()) trafficHandler.postDelayed(this, 2000L)
-  }
- }
  private var worker: Thread? = null
  private var interval = 10
  private var lock: PowerManager.WakeLock? = null
@@ -93,57 +55,12 @@ class MonitorService : Service() {
     startForeground(11, notification("Мониторинг запущен"))
     if (active.compareAndSet(false, true)) {
      lock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "InternetWake:Monitor").also { it.acquire() }
-     beginTrafficSession()
-     trafficHandler.removeCallbacks(trafficTicker)
-     trafficHandler.post(trafficTicker)
      log("Мониторинг запущен. Интервал: $interval сек.")
      worker = thread(name = "InternetWakeWorker") { loop() }
     }
    }
   }
   return START_STICKY
- }
- private fun beginTrafficSession() {
-  synchronized(trafficLock) {
-   val p = getSharedPreferences(TRAFFIC_PREF, 0)
-   val rx = TrafficStats.getUidRxBytes(android.os.Process.myUid())
-   val tx = TrafficStats.getUidTxBytes(android.os.Process.myUid())
-   val today = dayKey()
-   val todayBytes = if (p.getString("day_key", today) == today) p.getLong("today_bytes", 0L) else 0L
-   p.edit().putLong("session_bytes", 0L).putLong("today_bytes", todayBytes)
-    .putString("day_key", today).putLong("last_rx", rx).putLong("last_tx", tx)
-    .putBoolean("baseline", rx >= 0L && tx >= 0L).putBoolean("supported", rx >= 0L && tx >= 0L).apply()
-  }
- }
- private fun sampleTraffic() {
-  synchronized(trafficLock) {
-   val p = getSharedPreferences(TRAFFIC_PREF, 0)
-   val rx = TrafficStats.getUidRxBytes(android.os.Process.myUid())
-   val tx = TrafficStats.getUidTxBytes(android.os.Process.myUid())
-   if (rx < 0L || tx < 0L) {
-    p.edit().putBoolean("supported", false).apply()
-    return
-   }
-   if (!p.getBoolean("baseline", false)) {
-    p.edit().putLong("last_rx", rx).putLong("last_tx", tx)
-     .putBoolean("baseline", true).putBoolean("supported", true).apply()
-    return
-   }
-   val previousRx = p.getLong("last_rx", rx)
-   val previousTx = p.getLong("last_tx", tx)
-   // UID counters can reset after a device reboot; treat the new counter as
-   // the post-reboot delta instead of producing a negative value.
-   val delta = (if (rx >= previousRx) rx - previousRx else rx) +
-    (if (tx >= previousTx) tx - previousTx else tx)
-   val today = dayKey()
-   val todayBytes = if (p.getString("day_key", today) == today) p.getLong("today_bytes", 0L) else 0L
-   p.edit()
-    .putLong("total_bytes", p.getLong("total_bytes", 0L) + delta)
-    .putLong("today_bytes", todayBytes + delta)
-    .putLong("session_bytes", p.getLong("session_bytes", 0L) + delta)
-    .putString("day_key", today).putLong("last_rx", rx).putLong("last_tx", tx)
-    .putBoolean("supported", true).apply()
-  }
  }
  private fun loop() {
   // The selected servers stay under continuous cycle-by-cycle monitoring.
@@ -152,7 +69,6 @@ class MonitorService : Service() {
   var candidatePool: List<Server> = emptyList()
   var lastPoolRefresh = 0L
   var lastSearchStart = 0L
-  var recoveryMode = false
   var cycle = 0
   while (active.get()) {
    val cycleBegan = SystemClock.elapsedRealtime()
@@ -186,8 +102,9 @@ class MonitorService : Service() {
     selected = (currentResults.map { it.first } + newServers +
      failedSelected.drop(replacements)).distinct().take(5)
 
-    if (selected.size < 5 || healthy.size <= 2) recoveryMode = true
-    if (healthy.size == 5) recoveryMode = false
+    // Start recovery as soon as even one of the five selected servers fails.
+    // The monitor loop keeps probing the selected servers while discovery runs.
+    val needsRecovery = healthy.size < 5
 
     log("Цикл №$cycle: активных серверов ${healthy.size}/5.")
     if (healthy.isEmpty()) {
@@ -196,10 +113,9 @@ class MonitorService : Service() {
      healthy.forEach { log("${it.first.name}: ${it.second} мс") }
     }
 
-    // Once the pool falls to 2/5, keep recovery active until 5/5 returns.
-    // A single guarded worker scans alternatives while this loop keeps probing
-    // the remaining selected servers on the normal interval.
-    if (recoveryMode && healthy.size < 5 &&
+    // Any loss from the target of five starts a single background replacement
+    // search immediately; this worker never blocks the continuous monitor loop.
+    if (needsRecovery &&
         !discoveryRunning.get() && SystemClock.elapsedRealtime() - lastSearchStart >= 5000L) {
      startBackgroundDiscovery(candidatePool, selected, healthy.size)
      lastSearchStart = SystemClock.elapsedRealtime()
@@ -290,9 +206,7 @@ class MonitorService : Service() {
   sendBroadcast(Intent("com.internetwake.EVENT").setPackage(packageName).putExtra("payload", payload.toString()))
  }
  private fun stopMonitor() {
-  sampleTraffic()
   active.set(false)
-  trafficHandler.removeCallbacks(trafficTicker)
   worker?.interrupt(); worker = null
   discoveryResults.clear()
   discoveryWorker?.interrupt()
@@ -312,7 +226,6 @@ class MonitorService : Service() {
  }
  private fun updateNotification(text: String) { getSystemService(NotificationManager::class.java).notify(11, notification(text)) }
  override fun onDestroy() {
-  trafficHandler.removeCallbacks(trafficTicker)
   if (active.get()) stopMonitor()
   super.onDestroy()
  }
