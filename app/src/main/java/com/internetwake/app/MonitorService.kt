@@ -40,6 +40,7 @@ class MonitorService : Service() {
  private val active = AtomicBoolean(false)
  private val discoveryRunning = AtomicBoolean(false)
  private val discoveryResults = ConcurrentLinkedQueue<Pair<Server, Long>>()
+ private val verifiedReserve = ConcurrentLinkedQueue<Pair<Server, Long>>()
  @Volatile private var discoveryWorker: Thread? = null
  private var worker: Thread? = null
  private var interval = 5
@@ -105,23 +106,22 @@ class MonitorService : Service() {
     cycle++
     // Always probe every currently selected server first, even during recovery.
     val currentResults = probeAll(selected).sortedBy { it.second }
-    val additions = mutableListOf<Pair<Server, Long>>()
     while (true) {
      val item = discoveryResults.poll() ?: break
-     if (item.first !in selected && additions.none { it.first == item.first }) additions.add(item)
+     if (item.first !in selected && verifiedReserve.none { it.first == item.first }) {
+      if (verifiedReserve.size < 20) verifiedReserve.offer(item)
+     }
     }
-    val healthy = (currentResults + additions)
-     .distinctBy { it.first }
-     .sortedBy { it.second }
-     .take(5)
-    // Keep failed entries in the five-server monitoring set until a verified
-    // replacement is found. This lets a recovered old server be detected too.
     val currentHealthy = currentResults.map { it.first }.toSet()
     val failedSelected = selected.filterNot { it in currentHealthy }
-    val newServers = healthy.map { it.first }.filterNot { it in currentHealthy }
-    val replacements = minOf(newServers.size, failedSelected.size)
-    selected = (currentResults.map { it.first } + newServers +
-     failedSelected.drop(replacements)).distinct().take(5)
+    val replacements = mutableListOf<Pair<Server, Long>>()
+    while (replacements.size < (5 - currentResults.size).coerceAtLeast(0)) {
+     val candidate = verifiedReserve.poll() ?: break
+     if (candidate.first !in selected && candidate.first !in currentHealthy) replacements.add(candidate)
+    }
+    val healthy = (currentResults + replacements).distinctBy { it.first }.sortedBy { it.second }.take(5)
+    selected = (currentResults.map { it.first } + replacements.map { it.first } +
+     failedSelected.drop(replacements.size)).distinct().take(5)
 
     // Start recovery as soon as even one of the five selected servers fails.
     // The monitor loop keeps probing the selected servers while discovery runs.
@@ -154,14 +154,20 @@ class MonitorService : Service() {
   val excluded = current.toSet()
   discoveryWorker = thread(name = "InternetWakeDiscovery") {
    try {
-    val alternatives = pool.filterNot { it in excluded }
+    log("Осталось ${activeCount}/5 серверов. Запущены два независимых источника поиска; мониторинг продолжается.")
+    val sourceExecutor = Executors.newFixedThreadPool(2)
+    val remoteFuture = sourceExecutor.submit(Callable { loadServers() })
+    val emergencyFuture = sourceExecutor.submit(Callable { fallback })
+    val remoteCandidates = try { remoteFuture.get() } catch (_: Exception) { emptyList<Server>() }
+    val emergencyCandidates = try { emergencyFuture.get() } catch (_: Exception) { emptyList<Server>() }
+    sourceExecutor.shutdownNow()
+    val alternatives = (remoteCandidates + emergencyCandidates + pool)
+     .distinct().filterNot { it in excluded }
     if (alternatives.isEmpty()) return@thread
-    log("Осталось ${activeCount}/5 серверов. Ищем замену в фоне; мониторинг продолжается.")
-    val found = probeAll(alternatives).sortedBy { it.second }
-    val slots = (5 - activeCount).coerceAtLeast(0)
-    val additions = found.take(slots)
+    val found = probeAll(alternatives, 12).sortedBy { it.second }
+    val additions = found.take(20)
     additions.forEach { discoveryResults.offer(it) }
-    log("Фоновый поиск завершён: найдено новых серверов ${additions.size}.")
+    log("Фоновый поиск завершён: проверено ${alternatives.size}, подтверждено ${additions.size}; резерв пополнен.")
    } catch (e: Exception) {
     log("Ошибка фонового поиска: ${e.message ?: "сеть"}")
    } finally {
@@ -169,9 +175,9 @@ class MonitorService : Service() {
    }
   }
  }
- private fun probeAll(servers: List<Server>): List<Pair<Server, Long>> {
+ private fun probeAll(servers: List<Server>, maxParallel: Int = 20): List<Pair<Server, Long>> {
   if (servers.isEmpty()) return emptyList()
-  val executor = Executors.newFixedThreadPool(minOf(servers.size, 20))
+  val executor = Executors.newFixedThreadPool(minOf(servers.size, maxParallel.coerceAtLeast(1)))
   return try {
    val tasks = servers.map { server -> executor.submit(Callable { probe(server)?.let { server to it } }) }
    val results = mutableListOf<Pair<Server, Long>>()
@@ -232,6 +238,7 @@ class MonitorService : Service() {
   active.set(false)
   worker?.interrupt(); worker = null
   discoveryResults.clear()
+  verifiedReserve.clear()
   mainHandler.post { removeOverlayDot() }
   discoveryWorker?.interrupt()
   discoveryWorker = null
