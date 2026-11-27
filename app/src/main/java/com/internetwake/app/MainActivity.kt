@@ -35,6 +35,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::web.isInitialized) web.post { web.evaluateJavascript("window.onAppResume && window.onAppResume()", null) }
+        val prefs = getSharedPreferences("wake_log", 0)
+        if (prefs.getBoolean("running", false) && prefs.getBoolean("overlay_enabled", false) && Settings.canDrawOverlays(this)) {
+            startService(Intent(this, MonitorService::class.java).setAction(MonitorService.ACTION_OVERLAY_UPDATE))
+        }
     }
     override fun onDestroy() { try { unregisterReceiver(receiver) } catch (_: Exception) {}; super.onDestroy() }
     inner class Bridge {
