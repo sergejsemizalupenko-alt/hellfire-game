@@ -2,6 +2,13 @@ package com.internetwake.app
 import android.app.*
 import android.content.*
 import android.os.*
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
+import android.provider.Settings
+import android.view.Gravity
+import android.view.WindowManager
+import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -16,6 +23,7 @@ class MonitorService : Service() {
  companion object {
   const val ACTION_START = "wake.START"
   const val ACTION_STOP = "wake.STOP"
+  const val ACTION_OVERLAY_UPDATE = "wake.OVERLAY_UPDATE"
   private const val CHANNEL = "internet_wake"
   private const val PREF = "wake_log"
   private const val KEY = "entries"
@@ -34,7 +42,10 @@ class MonitorService : Service() {
  private val discoveryResults = ConcurrentLinkedQueue<Pair<Server, Long>>()
  @Volatile private var discoveryWorker: Thread? = null
  private var worker: Thread? = null
- private var interval = 10
+ private var interval = 5
+ private val mainHandler = Handler(Looper.getMainLooper())
+ @Volatile private var overlayView: TextView? = null
+ @Volatile private var lastActiveCount = 0
  private var lock: PowerManager.WakeLock? = null
  private val fallback = listOf(
   "Poznan, Poland|https://speedtest.kamilszczepanski.com|empty.php",
@@ -57,14 +68,16 @@ class MonitorService : Service() {
  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
   when (intent?.action) {
    ACTION_STOP -> { stopMonitor(); stopSelf(); return START_NOT_STICKY }
+   ACTION_OVERLAY_UPDATE -> { mainHandler.post { updateOverlayDot() }; return START_NOT_STICKY }
    ACTION_START -> {
-    interval = intent.getIntExtra("seconds", 10).coerceIn(5, 3600)
+    interval = intent.getIntExtra("seconds", 5).coerceIn(5, 3600)
     getSharedPreferences(PREF, 0).edit().putLong("started_at", System.currentTimeMillis()).apply()
     startForeground(11, notification("Мониторинг запущен"))
     if (active.compareAndSet(false, true)) {
      lock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "InternetWake:Monitor").also { it.acquire() }
      log("Мониторинг запущен. Интервал: $interval сек.")
      worker = thread(name = "InternetWakeWorker") { loop() }
+     mainHandler.post { updateOverlayDot() }
     }
    }
   }
@@ -113,6 +126,8 @@ class MonitorService : Service() {
     // Start recovery as soon as even one of the five selected servers fails.
     // The monitor loop keeps probing the selected servers while discovery runs.
     val needsRecovery = healthy.size < 5
+    lastActiveCount = healthy.size
+    mainHandler.post { updateOverlayDot() }
 
     log("Цикл №$cycle: активных серверов ${healthy.size}/5.")
     if (healthy.isEmpty()) {
@@ -217,6 +232,7 @@ class MonitorService : Service() {
   active.set(false)
   worker?.interrupt(); worker = null
   discoveryResults.clear()
+  mainHandler.post { removeOverlayDot() }
   discoveryWorker?.interrupt()
   discoveryWorker = null
   try { lock?.let { if (it.isHeld) it.release() } } catch (_: Exception) { }
@@ -225,6 +241,55 @@ class MonitorService : Service() {
   log("Мониторинг остановлен.")
   stopForeground(STOP_FOREGROUND_REMOVE)
  }
+ private fun updateOverlayDot() {
+  val prefs = getSharedPreferences(PREF, 0)
+  if (!active.get() || !prefs.getBoolean("overlay_enabled", false) || !Settings.canDrawOverlays(this)) {
+   removeOverlayDot()
+   return
+  }
+  if (overlayView != null) {
+   overlayView?.setTextColor(dotColor())
+   return
+  }
+  val dot = TextView(this).apply {
+   text = "●"
+   textSize = 24f
+   gravity = Gravity.CENTER
+   setTextColor(dotColor())
+   background = GradientDrawable().apply {
+    shape = GradientDrawable.OVAL
+    setColor(Color.argb(210, 5, 22, 38))
+    setStroke(dp(1), Color.argb(180, 120, 190, 225))
+   }
+   setOnClickListener {
+    val launch = packageManager.getLaunchIntentForPackage(packageName)
+    launch?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    if (launch != null) startActivity(launch)
+   }
+  }
+  val params = WindowManager.LayoutParams(dp(48), dp(48),
+   WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+   WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+   PixelFormat.TRANSLUCENT).apply {
+    gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+    y = dp(18)
+   }
+  try {
+   (getSystemService(WINDOW_SERVICE) as WindowManager).addView(dot, params)
+   overlayView = dot
+  } catch (_: Exception) { overlayView = null }
+ }
+ private fun dotColor(): Int = when (lastActiveCount) {
+  5 -> Color.rgb(70, 230, 155)
+  in 1..4 -> Color.rgb(255, 195, 65)
+  else -> Color.rgb(255, 75, 95)
+ }
+ private fun removeOverlayDot() {
+  val dot = overlayView ?: return
+  try { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(dot) } catch (_: Exception) { }
+  overlayView = null
+ }
+ private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
  private fun createChannel() {
   if (Build.VERSION.SDK_INT >= 26) getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "INTERNET WAKE", NotificationManager.IMPORTANCE_LOW))
  }
