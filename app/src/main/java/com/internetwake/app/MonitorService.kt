@@ -117,7 +117,12 @@ class MonitorService : Service() {
     val replacements = mutableListOf<Pair<Server, Long>>()
     while (replacements.size < (5 - currentResults.size).coerceAtLeast(0)) {
      val candidate = verifiedReserve.poll() ?: break
-     if (candidate.first !in selected && candidate.first !in currentHealthy) replacements.add(candidate)
+     if (candidate.first !in selected && candidate.first !in currentHealthy) {
+      // Re-check reserve entries before activating them; a previously healthy
+      // endpoint may have gone offline while waiting in the reserve queue.
+      val freshLatency = probe(candidate.first)
+      if (freshLatency != null) replacements.add(candidate.first to freshLatency)
+     }
     }
     val healthy = (currentResults + replacements).distinctBy { it.first }.sortedBy { it.second }.take(5)
     selected = (currentResults.map { it.first } + replacements.map { it.first } +
@@ -126,6 +131,9 @@ class MonitorService : Service() {
     // Start recovery as soon as even one of the five selected servers fails.
     // The monitor loop keeps probing the selected servers while discovery runs.
     val needsRecovery = healthy.size < 5
+    // Keep a warm reserve even while all five active servers are healthy.
+    // Refill below ten verified standby endpoints; cap remains twenty.
+    val needsReserveRefill = verifiedReserve.size < 10
     lastActiveCount = healthy.size
     mainHandler.post { updateOverlayDot() }
 
@@ -138,9 +146,13 @@ class MonitorService : Service() {
 
     // Any loss from the target of five starts a single background replacement
     // search immediately; this worker never blocks the continuous monitor loop.
-    if (needsRecovery &&
+    if ((needsRecovery || needsReserveRefill) &&
         !discoveryRunning.get() && SystemClock.elapsedRealtime() - lastSearchStart >= 5000L) {
-     startBackgroundDiscovery(candidatePool, selected, healthy.size)
+     if (needsRecovery) {
+      startBackgroundDiscovery(candidatePool, selected, healthy.size)
+     } else {
+      startBackgroundDiscovery(candidatePool, selected, 5)
+     }
      lastSearchStart = SystemClock.elapsedRealtime()
     }
     updateNotification("Цикл $cycle • серверов ${healthy.size}/5")
@@ -154,7 +166,11 @@ class MonitorService : Service() {
   val excluded = current.toSet()
   discoveryWorker = thread(name = "InternetWakeDiscovery") {
    try {
-    log("Осталось ${activeCount}/5 серверов. Запущены два независимых источника поиска; мониторинг продолжается.")
+    if (activeCount < 5) {
+     log("Осталось ${activeCount}/5 серверов. Запущены два источника поиска; мониторинг продолжается.")
+    } else {
+     log("Резервный пул содержит меньше 10 серверов. Запущено его пополнение в фоне.")
+    }
     val sourceExecutor = Executors.newFixedThreadPool(2)
     val remoteFuture = sourceExecutor.submit(Callable { loadServers() })
     val emergencyFuture = sourceExecutor.submit(Callable { fallback })
