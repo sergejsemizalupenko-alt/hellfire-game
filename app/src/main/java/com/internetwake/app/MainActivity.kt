@@ -6,6 +6,8 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
+import android.provider.Settings
 import android.webkit.*
 import org.json.JSONObject
 
@@ -30,6 +32,10 @@ class MainActivity : Activity() {
         val filter = IntentFilter("com.internetwake.EVENT")
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED) else registerReceiver(receiver, filter)
     }
+    override fun onResume() {
+        super.onResume()
+        if (::web.isInitialized) web.post { web.evaluateJavascript("window.onAppResume && window.onAppResume()", null) }
+    }
     override fun onDestroy() { try { unregisterReceiver(receiver) } catch (_: Exception) {}; super.onDestroy() }
     inner class Bridge {
         @JavascriptInterface fun start(seconds: Int) {
@@ -38,5 +44,13 @@ class MainActivity : Activity() {
         }
         @JavascriptInterface fun stop() { startService(Intent(this@MainActivity, MonitorService::class.java).setAction(MonitorService.ACTION_STOP)) }
         @JavascriptInterface fun state(): String = MonitorService.snapshot(this@MainActivity).toString()
+        @JavascriptInterface fun overlayEnabled(): Boolean = getSharedPreferences("wake_log", 0).getBoolean("overlay_enabled", false)
+        @JavascriptInterface fun overlayPermissionGranted(): Boolean = Settings.canDrawOverlays(this@MainActivity)
+        @JavascriptInterface fun setOverlayEnabled(enabled: Boolean) {
+            getSharedPreferences("wake_log", 0).edit().putBoolean("overlay_enabled", enabled).apply()
+            if (enabled && !Settings.canDrawOverlays(this@MainActivity)) {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName)))
+            } else startService(Intent(this@MainActivity, MonitorService::class.java).setAction(MonitorService.ACTION_OVERLAY_UPDATE))
+        }
     }
 }
