@@ -6,7 +6,7 @@
 <section class="clockbar"><div class="clockitem"><span class="clocklabel">ТЕКУЩЕЕ ВРЕМЯ</span><span class="clockvalue" id="clock">--:--:--</span></div><div class="clockitem" style="text-align:right"><span class="clocklabel">ВРЕМЯ РАБОТЫ</span><span class="clockvalue uptime" id="uptime">00:00:00</span></div></section>
 <section class="status"><div class="status-label">СОСТОЯНИЕ МОНИТОРИНГА</div><span id="status" class="status-value">ОЖИДАНИЕ ЗАПУСКА</span><div id="serverBox" class="serverline" style="display:none">Активных серверов <b id="serverCount">—/5</b></div></section>
 <section class="interval"><label for="interval">ИНТЕРВАЛ ЗАПРОСОВ · СЕКУНДЫ</label><input id="interval" type="number" value="5" min="5" max="3600"></section>
-<section class="interval"><label><input id="overlayToggle" type="checkbox"> Показывать плавающую точку состояния поверх других приложений</label><div id="overlayHint">Точка отображается во время мониторинга.</div></section>
+<section class="settings"><label><input id="overlayToggle" type="checkbox"> Показывать плавающую точку состояния поверх других приложений</label><div id="overlayHint">Точка отображается во время мониторинга.</div></section>
 <button id="start" onclick="startMonitoring()">▶ ЗАПУСТИТЬ</button><button id="stop" onclick="stopMonitoring()" disabled>■ ОСТАНОВИТЬ</button>
 
 <div class="logtitle">ЖУРНАЛ СЕТЕВЫХ ЗАПРОСОВ</div><div class="log" id="log">Подготовка журнала…</div><p class="foot">NETWORK EDITION · ФОНОВАЯ СЛУЖБА ANDROID</p></main>
