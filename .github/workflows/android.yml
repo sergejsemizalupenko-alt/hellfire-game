@@ -29,13 +29,7 @@ jobs:
         run: |
           mkdir -p ~/.android
           if [ ! -f ~/.android/debug.keystore ]; then
-            keytool -genkeypair -v \\
-              -keystore ~/.android/debug.keystore \\
-              -storepass android \\
-              -alias androiddebugkey \\
-              -keypass android \\
-              -dname "CN=Android Debug,O=Android,C=US" \\
-              -keyalg RSA -keysize 2048 -validity 10000
+            keytool -genkeypair -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           fi
       - name: Verify persistent signing certificate
         run: keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | grep -E 'SHA256:|SHA-256:'
